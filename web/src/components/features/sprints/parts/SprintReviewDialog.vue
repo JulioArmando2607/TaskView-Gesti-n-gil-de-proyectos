@@ -9,7 +9,7 @@
         <template #header>
           <div class="flex items-center justify-between">
             <h3 class="font-semibold">
-              {{ t('sprints.review.title') }}
+              {{ sprint.status === 'active' ? t('sprints.review.startTitle') : t('sprints.review.title') }}
             </h3>
             <UButton
               icon="i-lucide-x"
@@ -65,7 +65,15 @@
             </p>
           </div>
 
+          <p
+            v-if="sprint.status === 'active'"
+            class="rounded-lg border border-default p-3 text-sm text-muted"
+          >
+            {{ t('sprints.review.startHint') }}
+          </p>
+
           <UAlert
+            v-if="sprint.status === 'review'"
             icon="i-lucide-triangle-alert"
             color="warning"
             variant="subtle"
@@ -74,14 +82,14 @@
           />
 
           <p
-            v-if="!tasks.length"
+            v-if="sprint.status === 'review' && !tasks.length"
             class="py-4 text-center text-sm text-dimmed"
           >
             {{ t('sprints.review.noTasks') }}
           </p>
 
           <div
-            v-else
+            v-else-if="sprint.status === 'review'"
             class="flex max-h-[50vh] flex-col gap-2 overflow-y-auto pr-1"
           >
             <div
@@ -137,9 +145,10 @@
             </div>
           </div>
 
-          <USeparator />
+          <USeparator v-if="sprint.status === 'review'" />
 
           <UCheckbox
+            v-if="sprint.status === 'review'"
             v-model="goalAchieved"
             :label="t('sprints.review.goalAchieved')"
           />
@@ -154,10 +163,10 @@
               @click="open = false"
             />
             <UButton
-              :label="t('sprints.actions.close')"
+              :label="sprint.status === 'active' ? t('sprints.actions.startReview') : t('sprints.actions.close')"
               color="primary"
               :loading="loading"
-              @click="confirmOpen = true"
+              @click="sprint.status === 'active' ? performClose() : confirmOpen = true"
             />
           </div>
         </template>
@@ -320,6 +329,10 @@ async function performClose() {
         toast.add({ title: t('sprints.toasts.closeFailed'), color: 'error' })
         return
       }
+      toast.add({ title: t('sprints.toasts.reviewStarted'), color: 'success' })
+      emit('closed', review)
+      open.value = false
+      return
     }
 
     const payload: SprintTaskOutcomeInput[] = props.tasks

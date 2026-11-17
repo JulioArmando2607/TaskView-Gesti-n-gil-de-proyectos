@@ -62,7 +62,7 @@ Suite creada y ejecutada:
 - `web/e2e/scrum.lista14.pilot.spec.ts`
 - `web/playwright.lista14.config.ts`
 
-Resultado real: **1/1 PASS**, 0 FAIL, 0 SKIPPED. La prueba navegó por Scrum/backlog, dashboard y reportes, además de ejecutar las operaciones API autenticadas que representan el trabajo cotidiano del equipo. Se ejecutó en Chromium contra `http://127.0.0.1:18888` y API L04 `http://127.0.0.1:11725`.
+Resultado real: **2/2 PASS**, 0 FAIL, 0 SKIPPED. La prueba navegó por Scrum/backlog, dashboard y reportes, además de ejecutar las operaciones API autenticadas que representan el trabajo cotidiano del equipo. El segundo caso confirmó que activar no abre el cierre y que iniciar revisión cambia el sprint a `review` sin completarlo. Se ejecutó en Chromium contra `http://127.0.0.1:18888` y API L04 `http://127.0.0.1:11725`.
 
 El proyecto piloto conserva evidencia sintética para inspección posterior. Los artefactos Playwright quedan en `web/test-results/`; no contienen credenciales versionadas.
 
@@ -72,6 +72,7 @@ El proyecto piloto conserva evidencia sintética para inspección posterior. Los
 2. El rol backend inicialmente no podía crear/asignar sprints. Se ajustó únicamente el rol sintético del proyecto piloto con permisos de planificación y asignación; no se modificaron roles de proyectos existentes.
 3. El primer E2E dejó sprints sintéticos parciales. Se cerró el sprint de prueba incompleto y se eliminaron solo los sprints draft del proyecto piloto; no se afectó ningún otro proyecto ni la base protegida.
 4. La primera aserción del reporte esperaba el bug dentro del filtro del sprint, aunque el escenario lo mantuvo independiente. Se corrigió la prueba para verificar historia en el reporte del sprint y bug en el reporte global.
+5. El diálogo mostraba «Cerrar sprint» al iniciar la revisión. Se separó la UX: el estado activo muestra «Iniciar revisión del sprint» y solo el estado `review` muestra el cierre con resultados y objetivo.
 
 No se identificaron defectos nuevos de producto en el piloto después de esas correcciones de configuración, limpieza aislada y aserciones.
 
@@ -104,9 +105,12 @@ Archivos agregados en esta lista:
 
 - `web/e2e/scrum.lista14.pilot.spec.ts`
 - `web/playwright.lista14.config.ts`
+- `web/src/components/features/sprints/parts/SprintReviewDialog.vue`
+- `web/src/locales/es.ts`
+- `web/src/locales/en.ts`
 - `docs/scrum/14-piloto-operativo-sgaf-cobranzas.md`
 
-No se modificó código funcional de producción durante el piloto. El riesgo residual principal es que el proyecto real SGAF–Cobranzas, sus usuarios y sus reglas institucionales no fueron usados por la restricción de aislamiento. También permanece pendiente la autorización institucional para GitLab; no es una falla del flujo Scrum sintético validado.
+La corrección funcional quedó incluida en la imagen web L04 `taskview-l04-web:sprint-review-fix-20261117`, actualmente activa; la imagen anterior `taskview-l01-web:backlog-status-fix-20261117` permanece detenida para reversión. El riesgo residual principal es que el proyecto real SGAF–Cobranzas, sus usuarios y sus reglas institucionales no fueron usados por la restricción de aislamiento. También permanece pendiente la autorización institucional para GitLab; no es una falla del flujo Scrum sintético validado.
 
 ## 11. Recomendación final
 

@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import axios from 'axios'
 import {
   ALL_TASKS_LIST_ID,
   type RecurrenceCreateArgs,
@@ -212,17 +213,50 @@ export const useTasksStore = defineStore('tasks', {
     async updateTaskCompleteStatus(
       data: TaskArgUpdate,
       deleteCompleted: boolean = true,
-    ): Promise<{ complete: boolean; syncFailed?: boolean } | undefined> {
+    ): Promise<{ complete: boolean; syncFailed?: boolean; definitionOfDoneBlocked?: boolean; definitionOfDoneDetails?: string[]; statusUpdateFailure?: string } | undefined> {
       this.loading = true
 
+      let definitionOfDoneBlocked = false
+      let definitionOfDoneDetails: string[] = []
+      let statusUpdateFailure: string | undefined
       const taskResult = await $tvApi.tasks
         .updateTask(data)
-        .catch(logError)
+        .catch((error: unknown) => {
+          if (axios.isAxiosError(error)) {
+            const responseData = error.response?.data as { error?: string; details?: string[]; message?: string } | string | undefined
+            const responseError = typeof responseData === 'string' ? responseData : responseData?.error
+            if (error.response?.status === 409 && responseError === 'definition_of_done') {
+              definitionOfDoneBlocked = true
+              definitionOfDoneDetails = typeof responseData === 'object' ? responseData?.details ?? [] : []
+              return undefined
+            }
+
+            const responseMessage = typeof responseData === 'string'
+              ? responseData
+              : responseData?.message ?? responseData?.error
+            statusUpdateFailure = responseMessage
+              ? `HTTP ${error.response?.status ?? '—'}: ${responseMessage}`
+              : error.response
+                ? `HTTP ${error.response.status}: ${error.response.statusText || 'Error del servidor'}`
+                : error.message
+            return undefined
+          }
+          return logError(error)
+        })
         .finally(() => {
           this.loading = false
         })
 
-      if (!taskResult) return undefined
+      if (definitionOfDoneBlocked) {
+        return { complete: false, definitionOfDoneBlocked: true, definitionOfDoneDetails }
+      }
+      if (statusUpdateFailure) return { complete: false, statusUpdateFailure }
+      // The API used to return HTTP 200 with `response: null` for failed
+      // updates. Treat that as a failed save so status controls never silently
+      // fall back to the generic error with no diagnostic.
+      if (!taskResult) {
+        return { complete: false, statusUpdateFailure: 'El servidor no confirmó el cambio de estado de la tarea.' }
+      }
 
       // this.setTaskStatusId({ taskId: taskResult.id, statusId: taskResult.statusId });
 
@@ -236,9 +270,9 @@ export const useTasksStore = defineStore('tasks', {
         parentTask = this.selectedTask
       }
 
-      if (!parentTask) {
-        return undefined
-      }
+      // A task can be loaded only in the Kanban store (without being present
+      // in the main task list). The server update still succeeded in that case.
+      if (!parentTask) return { complete: taskResult.complete, syncFailed: taskResult.syncFailed }
 
       //we updating subtasks
       if (taskResult.parentId) {
@@ -248,7 +282,7 @@ export const useTasksStore = defineStore('tasks', {
         }
       } else {
         //we updating main task
-        parentTask.complete = taskResult.complete
+        Object.assign(parentTask, taskResult)
         //we deleting task from list if deleteCompleted is true
         // and task complete is different from showCompleted rule for fetching
         if (deleteCompleted && !!this.fetchRules.showCompleted !== data.complete) {

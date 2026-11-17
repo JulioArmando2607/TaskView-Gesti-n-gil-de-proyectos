@@ -16,7 +16,18 @@ export function useKanbanStatusOptions() {
     projectContext ? projectContext.statuses.value : kanbanStore.statuses,
   )
 
-  const resolveLabel = (name: string): string => (name.startsWith('msg.') ? t(name) : name)
+  const resolveLabel = (name: string): string => {
+    const resolved = name.startsWith('msg.') ? t(name) : name
+    const normalized = resolved.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+    const defaultLabels: Record<string, string> = {
+      backlog: 'Pendiente',
+      todo: 'Por hacer',
+      'in progress': 'En progreso',
+      testing: 'Pruebas',
+      done: 'Hecho',
+    }
+    return defaultLabels[normalized] ?? resolved
+  }
 
   const options = computed<TvDropdownOption<StatusValue>[]>(() =>
     statuses.value.map(status => ({

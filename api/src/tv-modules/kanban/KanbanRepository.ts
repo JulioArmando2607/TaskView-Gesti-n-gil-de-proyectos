@@ -211,13 +211,13 @@ export class KanbanRepository {
 
     async updateColumnVersion(goalId: GoalItemInDb['id'], columnId: KanbanStatusItemInDb['id'] | null): Promise<boolean> {
         if (columnId === null) {
-            const result = callWithCatch(() => this.db.dbDrizzle.update(GoalsSchema)
+            const result = await callWithCatch(() => this.db.dbDrizzle.update(GoalsSchema)
                 .set({ backlogVersion: sql`${GoalsSchema.backlogVersion} + 1`, })
                 .where(eq(GoalsSchema.id, goalId)));
             return result !== null;
         }
 
-        const result = callWithCatch(() => this.db.dbDrizzle.update(TasksStatusesSchema)
+        const result = await callWithCatch(() => this.db.dbDrizzle.update(TasksStatusesSchema)
             .set({ columnVersion: sql`${TasksStatusesSchema.columnVersion} + 1`, })
             .where(eq(TasksStatusesSchema.id, columnId)));
 

@@ -570,9 +570,12 @@ export class TasksRepository {
                 .from(TasksSchema).where(eq(TasksSchema.id, data.taskId)).for('update');
             if (!current) return [];
             const patch: Partial<typeof TasksSchema.$inferInsert> = { statusId: data.statusId };
-            if (current.statusId !== data.statusId && current.parentId === null) {
+            if (current.statusId !== data.statusId) {
                 const [row] = await tx.select({ min: sql<number>`MIN(${TasksSchema.kanbanOrder})` }).from(TasksSchema)
-                    .where(and(eq(TasksSchema.goalId, current.goalId), data.statusId === null ? isNull(TasksSchema.statusId) : eq(TasksSchema.statusId, data.statusId), isNull(TasksSchema.parentId)));
+                    // The unique index covers every task in the same column,
+                    // including subtasks. Excluding children can reuse their
+                    // order and make the status update fail with a duplicate key.
+                    .where(and(eq(TasksSchema.goalId, current.goalId), data.statusId === null ? isNull(TasksSchema.statusId) : eq(TasksSchema.statusId, data.statusId)));
                 patch.kanbanOrder = (row?.min ?? 0) - TasksRepository.KANBAN_ORDER_GAP;
             }
             return tx.update(TasksSchema).set(patch).where(eq(TasksSchema.id, data.taskId)).returning({ id: TasksSchema.id });
@@ -630,16 +633,20 @@ export class TasksRepository {
                 const [current] = await tx.select({ goalId: TasksSchema.goalId, statusId: TasksSchema.statusId, parentId: TasksSchema.parentId }).from(TasksSchema).where(eq(TasksSchema.id, data.id)).for('update');
                 if (!current) return [];
                 if (updates.parentId != null) await assertTaskParent(tx, { goalId: current.goalId, parentId: updates.parentId, taskId: data.id });
-                if (updates.statusId !== undefined && updates.statusId !== current.statusId && current.parentId === null) {
+                if (updates.statusId !== undefined && updates.statusId !== current.statusId) {
                     const [row] = await tx.select({ min: sql<number>`MIN(${TasksSchema.kanbanOrder})` }).from(TasksSchema)
-                        .where(and(eq(TasksSchema.goalId, current.goalId), updates.statusId === null ? isNull(TasksSchema.statusId) : eq(TasksSchema.statusId, updates.statusId), isNull(TasksSchema.parentId)));
+                        // uniq_tasks_goal_status_order includes subtasks, so
+                        // choose a free order across the entire destination column.
+                        .where(and(eq(TasksSchema.goalId, current.goalId), updates.statusId === null ? isNull(TasksSchema.statusId) : eq(TasksSchema.statusId, updates.statusId)));
                     updates.kanbanOrder = (row?.min ?? 0) - TasksRepository.KANBAN_ORDER_GAP;
                 }
                 return tx.update(TasksSchema).set(updates).where(eq(TasksSchema.id, data.id)).returning();
             }).catch((error: unknown) => {
                 if (updates.parentId !== undefined || error instanceof TaskTreeIntegrityError || (error instanceof Error && error.name === 'TaskTreeIntegrityError')) throw new TaskTreeIntegrityError();
-                logError(error);
-                return [];
+                // Do not turn a failed status/completion write into an empty
+                // result. The controller must return an error so the client
+                // can report the real failure instead of a misleading success.
+                throw error;
             })
             : await callWithCatch(() => this.db.dbDrizzle.update(TasksSchema).set(updates).where(eq(TasksSchema.id, data.id)).returning());
         return result?.[0] ?? null;
@@ -668,6 +675,38 @@ export class TasksRepository {
             this.db.dbDrizzle.select().from(TasksSchema).where(eq(TasksSchema.id, taskId))
         );
         return result?.[0] ?? null;
+    }
+
+    async fetchTaskParentSummaries(goalId: number, taskIds: number[]): Promise<Map<number, { issueKey: string; description: string }>> {
+        if (taskIds.length === 0) return new Map();
+        const rows = await callWithCatch(() => this.db.dbDrizzle
+            .select({ id: TasksSchema.id, issueKey: TasksSchema.issueKey, description: TasksSchema.description })
+            .from(TasksSchema)
+            .where(and(eq(TasksSchema.goalId, goalId), inArray(TasksSchema.id, taskIds))));
+        return new Map((rows ?? []).map(row => [row.id, { issueKey: row.issueKey, description: row.description ?? '' }]));
+    }
+
+    async fetchTaskEpicSummaries(goalId: number, taskIds: number[]): Promise<Map<number, { issueKey: string; title: string }>> {
+        if (taskIds.length === 0) return new Map();
+        const { rows } = await this.db.query<{ task_id: number; issue_key: string; title: string }>(
+            `WITH RECURSIVE task_ancestry AS (
+                SELECT id AS task_id, id, parent_id, related_task_id, work_item_type, epic_id, 0 AS depth
+                FROM tasks.tasks WHERE goal_id = $1 AND id = ANY($2::int[])
+                UNION ALL
+                SELECT child.task_id, parent.id, parent.parent_id, parent.related_task_id,
+                       parent.work_item_type, parent.epic_id, child.depth + 1
+                FROM tasks.tasks parent
+                JOIN task_ancestry child
+                  ON parent.id = CASE WHEN child.work_item_type = 'bug' THEN child.related_task_id ELSE child.parent_id END
+                WHERE child.epic_id IS NULL AND child.depth < 32
+            )
+            SELECT DISTINCT ON (ancestry.task_id) ancestry.task_id, epic.issue_key, epic.title
+            FROM task_ancestry ancestry
+            JOIN tasks.scrum_epics epic ON epic.id = ancestry.epic_id AND epic.goal_id = $1
+            ORDER BY ancestry.task_id, ancestry.depth`,
+            [goalId, taskIds],
+        );
+        return new Map(rows.map(row => [row.task_id, { issueKey: row.issue_key, title: row.title }]));
     }
 
     async fetch(data: TaskArgFetchTasksNew): Promise<TasksSchemaTypeForSelect[]> {
@@ -841,7 +880,8 @@ export class TasksRepository {
             if (values.parentId != null) await assertTaskParent(tx, { goalId: values.goalId, parentId: values.parentId });
             else if (values.kanbanOrder == null) {
                 const [row] = await tx.select({ min: sql<number>`MIN(${TasksSchema.kanbanOrder})` }).from(TasksSchema)
-                    .where(and(eq(TasksSchema.goalId, values.goalId), values.statusId == null ? isNull(TasksSchema.statusId) : eq(TasksSchema.statusId, values.statusId), isNull(TasksSchema.parentId)));
+                    // Keep generated root-task orders unique against child cards too.
+                    .where(and(eq(TasksSchema.goalId, values.goalId), values.statusId == null ? isNull(TasksSchema.statusId) : eq(TasksSchema.statusId, values.statusId)));
                 values.kanbanOrder = (row?.min ?? 0) - TasksRepository.KANBAN_ORDER_GAP;
             }
             return tx.insert(TasksSchema).values(values).returning();
@@ -862,10 +902,11 @@ export class TasksRepository {
             eq(TasksSchema.goalId, goalId),
             columnId === null ? isNull(TasksSchema.statusId) : eq(TasksSchema.statusId, columnId),
             isNotNull(TasksSchema.kanbanOrder),
+            ...(columnId === null ? [isNotNull(TasksSchema.taskOrder)] : []),
             ...(filters?.includeSubtasks ? [] : [isNull(TasksSchema.parentId)]),
         ];
         if (cursor !== null) {
-            conditions.push(gt(TasksSchema.kanbanOrder, cursor));
+            conditions.push(gt(columnId === null ? TasksSchema.taskOrder : TasksSchema.kanbanOrder, cursor));
         }
         if (filters?.sprintId !== undefined) {
             conditions.push(eq(TasksSchema.sprintId, filters.sprintId));
@@ -895,9 +936,38 @@ export class TasksRepository {
             const priorities = filters.priorityIds.filter((id): id is 1 | 2 | 3 => id === 1 || id === 2 || id === 3);
             if (priorities.length) conditions.push(inArray(TasksSchema.priorityId, priorities));
         }
+        if (filters?.epicId !== undefined) {
+            const epicFilter = filters.epicId === null
+                ? sql`NOT EXISTS (
+                    WITH RECURSIVE task_ancestry AS (
+                        SELECT id, parent_id, related_task_id, work_item_type, epic_id
+                        FROM tasks.tasks current_task WHERE current_task.id = ${TasksSchema.id}
+                        UNION
+                        SELECT parent.id, parent.parent_id, parent.related_task_id, parent.work_item_type, parent.epic_id
+                        FROM tasks.tasks parent
+                        JOIN task_ancestry child
+                          ON parent.id = CASE WHEN child.work_item_type = 'bug' THEN child.related_task_id ELSE child.parent_id END
+                    )
+                    SELECT 1 FROM task_ancestry WHERE epic_id IS NOT NULL
+                )`
+                : sql`EXISTS (
+                    WITH RECURSIVE task_ancestry AS (
+                        SELECT id, parent_id, related_task_id, work_item_type, epic_id
+                        FROM tasks.tasks current_task WHERE current_task.id = ${TasksSchema.id}
+                        UNION
+                        SELECT parent.id, parent.parent_id, parent.related_task_id, parent.work_item_type, parent.epic_id
+                        FROM tasks.tasks parent
+                        JOIN task_ancestry child
+                          ON parent.id = CASE WHEN child.work_item_type = 'bug' THEN child.related_task_id ELSE child.parent_id END
+                    )
+                    SELECT 1 FROM task_ancestry WHERE epic_id = ${filters.epicId}
+                )`;
+            conditions.push(epicFilter);
+        }
 
         const result = await callWithCatch(() =>
-            this.db.dbDrizzle.select().from(TasksSchema).where(and(...conditions)).orderBy(asc(TasksSchema.kanbanOrder)).limit(20)
+            this.db.dbDrizzle.select().from(TasksSchema).where(and(...conditions))
+                .orderBy(asc(columnId === null ? TasksSchema.taskOrder : TasksSchema.kanbanOrder), asc(TasksSchema.id)).limit(20)
         );
         if (!result?.length) return [];
         // Enrich the Kanban payload in one query so Scrum-aware cards can show QA

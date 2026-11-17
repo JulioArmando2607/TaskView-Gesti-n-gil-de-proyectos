@@ -24,6 +24,7 @@
                 v-model:sprint-id="selectedSprintId"
                 v-model:work-item-type="selectedWorkItemType"
                 v-model:priority-id="selectedPriorityId"
+                v-model:epic-id="selectedEpicId"
                 :goal-id="projectId"
                 show-reset-label
               />
@@ -51,6 +52,7 @@
             v-model:sprint-id="selectedSprintId"
             v-model:work-item-type="selectedWorkItemType"
             v-model:priority-id="selectedPriorityId"
+            v-model:epic-id="selectedEpicId"
             :goal-id="projectId"
           />
         </div>
@@ -91,7 +93,12 @@ const { isDesktop } = useTaskView()
 const { selectedListIds, selectedAssigneeIds, selectedSprintId, hasActiveFilters } = useFiltersFromQuery()
 const selectedWorkItemType = ref('')
 const selectedPriorityId = ref('')
+const selectedEpicId = ref('')
 const showFilters = ref(isDesktop.value || hasActiveFilters.value)
+
+const epicFilter = computed(() => selectedEpicId.value === ''
+  ? undefined
+  : selectedEpicId.value === 'none' ? null : Number(selectedEpicId.value))
 
 kanbanStore.setFilters({
   listIds: selectedListIds.value,
@@ -99,16 +106,18 @@ kanbanStore.setFilters({
   sprintId: selectedSprintId.value ?? undefined,
   workItemTypes: selectedWorkItemType.value ? [selectedWorkItemType.value as 'task' | 'story' | 'bug'] : undefined,
   priorityIds: selectedPriorityId.value ? [Number(selectedPriorityId.value)] : undefined,
+  epicId: epicFilter.value,
   includeSubtasks: kanbanStore.filters.includeSubtasks,
 })
 
-watch([selectedListIds, selectedAssigneeIds, selectedSprintId, selectedWorkItemType, selectedPriorityId], ([listIds, assigneeIds, sprintId, workItemType, priorityId]) => {
+watch([selectedListIds, selectedAssigneeIds, selectedSprintId, selectedWorkItemType, selectedPriorityId, selectedEpicId], ([listIds, assigneeIds, sprintId, workItemType, priorityId]) => {
   kanbanStore.setFilters({
     listIds,
     assigneeIds,
     sprintId: sprintId ?? undefined,
     workItemTypes: workItemType ? [workItemType as 'task' | 'story' | 'bug'] : undefined,
     priorityIds: priorityId ? [Number(priorityId)] : undefined,
+    epicId: epicFilter.value,
     includeSubtasks: kanbanStore.filters.includeSubtasks,
   })
   kanbanStore.reloadColumns()

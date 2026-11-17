@@ -250,6 +250,10 @@ export type TaskForClientNew = TasksSchemaTypeForSelect & {
     subtasks: TaskForClientNew[];
     filesCount: number;
     qaStatus?: 'pending' | 'observed' | 'approved' | null;
+    parentIssueKey?: string | null;
+    parentDescription?: string | null;
+    epicIssueKey?: string | null;
+    epicTitle?: string | null;
 };
 
 export const TaskArkTypeDelete = type({

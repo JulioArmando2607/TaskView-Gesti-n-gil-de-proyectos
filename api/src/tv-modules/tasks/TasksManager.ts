@@ -522,6 +522,19 @@ export class TasksManager {
     async fetchTasksForKanbanColumn(data: KanbanArgFetchTasksForColumn & { filters?: KanbanArgFilters }): Promise<{ tasks: TaskForClientNew[], nextCursor: string | number | null }> {
         const tasks = await this.repository.fetchTasksForKanbanColumn(data.goalId, data.columnId, data.cursor, data.filters);
         if (!tasks || tasks.length === 0) return { tasks: [], nextCursor: null };
-        return { tasks: await this.extendTasksWithTagsAndAssignees(tasks), nextCursor: tasks[tasks.length - 1].kanbanOrder };
+        const parentIds = [...new Set(tasks.flatMap(task => task.parentId == null ? [] : [task.parentId]))];
+        const parents = await this.repository.fetchTaskParentSummaries(data.goalId, parentIds);
+        const epics = await this.repository.fetchTaskEpicSummaries(data.goalId, tasks.map(task => task.id));
+        const extended = await this.extendTasksWithTagsAndAssignees(tasks);
+        return {
+            tasks: extended.map(task => ({
+                ...task,
+                parentIssueKey: task.parentId == null ? null : parents.get(task.parentId)?.issueKey ?? null,
+                parentDescription: task.parentId == null ? null : parents.get(task.parentId)?.description ?? null,
+                epicIssueKey: epics.get(task.id)?.issueKey ?? null,
+                epicTitle: epics.get(task.id)?.title ?? null,
+            })),
+            nextCursor: data.columnId === null ? tasks[tasks.length - 1].taskOrder : tasks[tasks.length - 1].kanbanOrder,
+        };
     }
 }

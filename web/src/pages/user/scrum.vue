@@ -41,10 +41,17 @@
           @click="view = tab.id"
         />
         <USelect
+          v-if="view === 'board'"
+          v-model="kanbanEpicFilter"
+          data-testid="scrum-kanban-epic-filter"
+          :items="kanbanEpicOptions"
+          class="ml-auto min-w-48"
+        />
+        <USelect
           v-model="typeFilter"
           data-testid="scrum-type-filter"
           :items="typeOptions"
-          class="ml-auto min-w-36"
+          :class="view === 'board' ? 'min-w-36' : 'ml-auto min-w-36'"
         />
       </div>
     </template>
@@ -258,6 +265,14 @@
                 class="mt-1"
               />
             </div>
+            <div class="min-w-56 flex-1">
+              <label class="text-xs text-muted">Épica</label><USelect
+                v-model="planningEpicFilter"
+                data-testid="scrum-planning-epic-filter"
+                :items="planningEpicOptions"
+                class="mt-1"
+              />
+            </div>
             <div class="text-sm text-muted pb-2">
               {{ selectedForSprint.length }} elementos · {{ sprintPoints }} puntos estimados
             </div>
@@ -276,7 +291,7 @@
           </p>
           <div class="rounded-xl border border-default divide-y divide-default">
             <label
-              v-for="plannedItem in filtered(plannableItems)"
+              v-for="plannedItem in filteredPlanningItems"
               :key="plannedItem.id"
               class="flex items-center gap-3 p-3 hover:bg-elevated/50"
               :class="plannedItem.parent_id != null ? 'border-l-2 border-primary/40 pl-6' : ''"
@@ -292,6 +307,20 @@
                 :title="plannedItem.parent_id != null ? 'Subtarea' : typeLabel(plannedItem.work_item_type)"
               >{{ workTypeCode(plannedItem.work_item_type, plannedItem.parent_id != null) }}</UBadge><span class="flex-1 truncate">{{ plannedItem.description }}</span>
               <UBadge
+                v-if="epicForItem(plannedItem)"
+                color="primary"
+                variant="subtle"
+                size="xs"
+                class="max-w-56 truncate"
+                :title="`Épica: ${epicForItem(plannedItem)?.issueKey} · ${epicForItem(plannedItem)?.title}`"
+              >{{ epicForItem(plannedItem)?.issueKey }} · {{ epicForItem(plannedItem)?.title }}</UBadge>
+              <UBadge
+                v-else
+                color="neutral"
+                variant="subtle"
+                size="xs"
+              >Sin épica</UBadge>
+              <UBadge
                 v-if="plannedItem.parent_id != null"
                 color="neutral"
                 variant="subtle"
@@ -299,7 +328,7 @@
               <span class="text-xs text-muted">{{ plannedItem.sprint_id ? `Sprint ${plannedItem.sprint_id}` : 'Backlog' }}</span>
             </label>
             <div
-              v-if="!filtered(plannableItems).length"
+              v-if="!filteredPlanningItems.length"
               class="p-6 text-center text-sm text-muted"
             >
               No hay elementos para planificar.
@@ -650,6 +679,18 @@ const NONE_VALUE = '__none__'
 const typeOptions = [{ label: 'Todos los tipos', value: 'all' }, { label: 'Historia', value: 'story' }, { label: 'Tarea', value: 'task' }, { label: 'Bug', value: 'bug' }]
 const priorityOptions = [{ label: 'Sin prioridad', value: NONE_VALUE }, { label: 'Baja', value: '1' }, { label: 'Media', value: '2' }, { label: 'Alta', value: '3' }]
 const epicOptions = computed(() => [{ label: 'Sin épica', value: NONE_VALUE }, ...epics.value.filter(e => !e.archived).map(e => ({ label: `${e.issueKey} · ${e.title}`, value: String(e.id) }))])
+const planningEpicFilter = ref('all')
+const planningEpicOptions = computed(() => [
+  { label: 'Todas las épicas', value: 'all' },
+  { label: 'Sin épica', value: NONE_VALUE },
+  ...epics.value.map(epic => ({ label: `${epic.issueKey} · ${epic.title}${epic.archived ? ' (Archivada)' : ''}`, value: String(epic.id) })),
+])
+const kanbanEpicFilter = ref('all')
+const kanbanEpicOptions = computed(() => [
+  { label: 'Todas las épicas', value: 'all' },
+  { label: 'Sin épica', value: '__none__' },
+  ...epics.value.map(epic => ({ label: `${epic.issueKey} · ${epic.title}${epic.archived ? ' (Archivada)' : ''}`, value: String(epic.id) })),
+])
 const ownerOptions = computed(() => [{ label: 'Sin responsable', value: NONE_VALUE }, ...collaboration.users.map(user => ({ label: user.email, value: String(user.id) }))])
 const statusOptions = computed(() => [{ label: 'Estado predeterminado', value: NONE_VALUE }, ...statuses.value.map(s => ({ label: s.name, value: String(s.id) }))])
 const affectedOptions = computed(() => [{ label: 'Sin elemento afectado', value: NONE_VALUE }, ...items.value.filter(i => i.work_item_type !== 'bug').map(i => ({ label: `${i.issue_key} · ${i.description}`, value: String(i.id) }))])
@@ -661,8 +702,27 @@ const latestQaStatus = computed(() => latestQa.value?.status === 'approved' ? 'A
 const qaBugOptions = computed(() => [{ label: 'Sin bug relacionado', value: NONE_VALUE }, ...items.value.filter(i => i.work_item_type === 'bug').map(i => ({ label: `${i.issue_key} · ${i.description}`, value: String(i.id) }))])
 const selectedSprintData = computed(() => selectedSprint.value === NONE_VALUE ? undefined : sprints.value.find(s => String(s.id) === selectedSprint.value))
 const plannableItems = computed(() => items.value)
+const itemsById = computed(() => new Map(items.value.map(item => [item.id, item])))
 const selectedForSprint = computed(() => plannableItems.value.filter(i => selectedIds.value.includes(i.id)))
 const sprintPoints = computed(() => selectedForSprint.value.reduce((sum, i) => sum + Number(i.estimate_value ?? 0), 0))
+function epicForItem(item: ScrumItem): ScrumEpic | undefined {
+  const visited = new Set<number>()
+  let current: ScrumItem | undefined = item
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id)
+    if (current.epic_id != null) return epics.value.find(epic => epic.id === current!.epic_id)
+    const relatedId: number | null = current.work_item_type === 'bug' ? current.related_task_id : current.parent_id
+    current = relatedId == null ? undefined : itemsById.value.get(relatedId)
+  }
+  return undefined
+}
+const filteredPlanningItems = computed(() => filtered(plannableItems.value).filter((item) => {
+  if (planningEpicFilter.value === 'all') return true
+  const epicId = epicForItem(item)?.id
+  return planningEpicFilter.value === NONE_VALUE
+    ? epicId == null
+    : String(epicId) === planningEpicFilter.value
+}))
 const epicItems = (id: number) => items.value.filter(i => ['story', 'task'].includes(i.work_item_type) && i.epic_id === id && i.parent_id == null)
 const relatedBugs = (id: number) => items.value.filter(i => i.work_item_type === 'bug' && i.related_task_id === id)
 const visibleRelatedBugs = (id: number) => relatedBugs(id).filter(matches)
@@ -749,7 +809,25 @@ watch(view, async (v) => {
     view.value = 'backlog'
     return
   }
-  if (v === 'board' && canViewKanban.value && kanbanStore.statuses.length === 0) await kanbanStore.fetchStatuses(projectId.value)
+  if (v === 'board' && canViewKanban.value) {
+    applyKanbanFilters()
+    if (kanbanStore.statuses.length === 0) await kanbanStore.fetchStatuses(projectId.value)
+    else await kanbanStore.reloadColumns()
+  }
+})
+function applyKanbanFilters() {
+  const epicId = kanbanEpicFilter.value === 'all'
+    ? undefined
+    : kanbanEpicFilter.value === '__none__' ? null : Number(kanbanEpicFilter.value)
+  const workItemTypes = ['story', 'task', 'bug'].includes(typeFilter.value)
+    ? [typeFilter.value as 'story' | 'task' | 'bug']
+    : undefined
+  kanbanStore.setFilters({ ...kanbanStore.filters, epicId, workItemTypes })
+}
+watch([kanbanEpicFilter, typeFilter], () => {
+  if (view.value !== 'board') return
+  applyKanbanFilters()
+  void kanbanStore.reloadColumns()
 })
 
 const modalOpen = ref(false); const formMode = ref<'epic' | 'create-item' | 'edit-item'>('create-item')

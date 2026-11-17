@@ -42,6 +42,8 @@ export interface TaskBase {
     relatedTaskId?: number | null;
     issueKey?: string | null;
     qaStatus?: 'pending' | 'observed' | 'approved' | null;
+    epicIssueKey?: string | null;
+    epicTitle?: string | null;
 
     recurrenceRuleId: number | null;
     recurrenceInstanceDate: string | null;

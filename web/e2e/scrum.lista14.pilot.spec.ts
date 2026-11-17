@@ -17,11 +17,29 @@ async function auth(email: string, password: string) {
   }
 }
 
+async function resetPilotSprints(api: Awaited<ReturnType<typeof auth>>['api']) {
+  const listed = await api.get(`/module/sprints/${PROJECT_ID}`)
+  expect(listed.status()).toBe(200)
+  const sprints = (await listed.json() as { response: Array<{ id: number; status: string }> }).response
+  for (const sprint of sprints.filter(item => item.status === 'draft' || item.status === 'planned')) {
+    await api.delete(`/module/sprints/sprint/${sprint.id}`)
+  }
+  for (const sprint of sprints.filter(item => item.status === 'active' || item.status === 'review')) {
+    if (sprint.status === 'active') {
+      const review = await api.post(`/module/sprints/sprint/${sprint.id}/review`, { data: {} })
+      expect(review.status()).toBe(200)
+    }
+    const closed = await api.post(`/module/sprints/sprint/${sprint.id}/close`, { data: { outcomes: [], goalAchieved: false } })
+    expect(closed.status()).toBe(200)
+  }
+}
+
 test('piloto L04 ejecuta flujo Scrum operativo y contrasta indicadores', async ({ page }) => {
   const password = process.env.SCRUM_TEST_PASSWORD
   const email = process.env.SCRUM_PILOT_OPERATOR_EMAIL ?? 'l04-owner@example.invalid'
   test.skip(!password, 'Requires isolated L04 synthetic password')
   const session = await auth(email, password!)
+  await resetPilotSprints(session.api)
   const suffix = `L04-PILOTO-${Date.now()}`
 
   const statusesResponse = await session.api.post('/module/kanban/fetch-statuses', { data: { goalId: PROJECT_ID } })
@@ -122,6 +140,11 @@ test('piloto L04 ejecuta flujo Scrum operativo y contrasta indicadores', async (
   const history = await session.api.get(`/module/tasks/${story.id}/history`)
   expect(history.status()).toBe(200)
 
+  const closed = await session.api.post(`/module/sprints/sprint/${sprint.id}/close`, {
+    data: { outcomes: [story.id, ...taskIds].map(taskId => ({ taskId, outcome: 'accepted' })), goalAchieved: true },
+  })
+  expect(closed.status()).toBe(200)
+
   await page.route('**/config.js', route => route.fulfill({ status: 200, contentType: 'application/javascript', body: `window.__TASKVIEW_CONFIG__ = { apiUrl: "${API_URL}" }` }))
   await page.addInitScript(({ access, refresh }) => {
     localStorage.setItem('store_task_view.task_view.access', access)
@@ -134,5 +157,55 @@ test('piloto L04 ejecuta flujo Scrum operativo y contrasta indicadores', async (
   await page.goto(`${BASE_URL}/${ORG_SLUG}/${PROJECT_ID}/reports`)
   await expect(page.getByRole('heading', { name: /Reportes Scrum/ })).toBeVisible()
   await expect(page.getByRole('button', { name: 'CSV' })).toBeVisible()
+  await session.api.dispose()
+})
+
+test('activar sprint no abre cierre e iniciar revisión conserva el sprint abierto', async ({ page }) => {
+  const password = process.env.SCRUM_TEST_PASSWORD
+  test.skip(!password, 'Requires isolated L04 synthetic password')
+  const session = await auth('l04-owner@example.invalid', password!)
+  await resetPilotSprints(session.api)
+  const name = `L04-PILOTO-UI-${Date.now()}`
+  const created = await session.api.post('/module/sprints', {
+    data: {
+      goalId: PROJECT_ID,
+      name,
+      startDate: new Date().toISOString().slice(0, 10),
+      endDate: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
+      goalText: 'Validar transición de activación a revisión',
+      capacity: 5,
+    },
+  })
+  expect(created.status()).toBe(200)
+
+  await page.route('**/config.js', route => route.fulfill({ status: 200, contentType: 'application/javascript', body: `window.__TASKVIEW_CONFIG__ = { apiUrl: "${API_URL}" }` }))
+  await page.addInitScript(({ access, refresh }) => {
+    localStorage.setItem('store_task_view.task_view.access', access)
+    localStorage.setItem('store_task_view.task_view.refresh', refresh)
+  }, session.tokens)
+  await page.goto(`${BASE_URL}/${ORG_SLUG}/${PROJECT_ID}/sprints`)
+  await page.getByRole('tab', { name: /Backlog/ }).click()
+  const card = page.locator('[class*="cursor-pointer"]').filter({ hasText: name }).first()
+  await expect(card).toBeVisible()
+  await card.getByRole('button', { name: /Activar|Activate/ }).click()
+  await expect(page.getByText(name).first()).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Cerrar sprint' })).toHaveCount(0)
+
+  await page.evaluate((sprintName) => {
+    const heading = Array.from(document.querySelectorAll('h2')).find(item => item.textContent?.trim() === sprintName)
+    let node = heading?.parentElement ?? null
+    while (node && node.querySelectorAll('button').length === 0) node = node.parentElement
+    const buttons = node ? Array.from(node.querySelectorAll('button')) : []
+    ;(buttons.at(-1) as HTMLButtonElement | undefined)?.click()
+  }, name)
+  await page.getByRole('menuitem', { name: /Iniciar revisión|Start review|Start sprint review/ }).click()
+  await expect(page.getByRole('heading', { name: /Iniciar revisión del sprint|Start sprint review/ })).toBeVisible()
+  await page.getByRole('button', { name: /Iniciar revisión|Start review|Start sprint review/ }).click()
+  await expect(page.getByRole('heading', { name: /Iniciar revisión del sprint|Start sprint review/ })).toHaveCount(0)
+  await expect(page.getByText(/Revisión del sprint iniciada|Sprint review started/).last()).toBeVisible()
+  const persisted = await session.api.get(`/module/sprints/${PROJECT_ID}`)
+  expect(persisted.status()).toBe(200)
+  const sprint = (await persisted.json() as { response: Array<{ name: string; status: string }> }).response.find(item => item.name === name)
+  expect(sprint?.status).toBe('review')
   await session.api.dispose()
 })

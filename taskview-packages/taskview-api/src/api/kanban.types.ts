@@ -9,6 +9,8 @@ export type KanbanFilters = {
     includeSubtasks?: boolean;
     workItemTypes?: Array<'task' | 'story' | 'bug'>;
     priorityIds?: number[];
+    /** Filter by epic id; null means items without an epic. */
+    epicId?: number | null;
 };
 
 export type KanbanColumnItem = {
