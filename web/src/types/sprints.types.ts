@@ -14,6 +14,7 @@ import type {
  */
 export type SprintTask = Task & {
   sprintId?: number | null
+  parentId?: number | null
   estimateValue?: string | null
   completedAt?: string | null
 }

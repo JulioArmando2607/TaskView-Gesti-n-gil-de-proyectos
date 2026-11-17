@@ -36,12 +36,42 @@ import {
     type TasksArgToggleTaskUsers,
 } from './tasks.server.types';
 import type { KanbanArgFilters } from '../kanban/types';
+import { assertTaskParent, assertTaskParentClient, lockTaskTree, lockTaskTreeClient, TaskTreeIntegrityError } from './TaskTreeIntegrity';
 
 export class TasksRepository {
     private readonly db: Database;
 
     constructor() {
         this.db = Database.getInstance();
+    }
+
+    async validateDefinitionOfDone(taskId: number): Promise<{ ok: true } | { ok: false; details: string[] }> {
+        const task = await this.db.query<{ goal_id: number; work_item_type: string; acceptance_criteria: string | null; sprint_id: number | null }>(
+            'SELECT goal_id, work_item_type, acceptance_criteria, sprint_id FROM tasks.tasks WHERE id=$1', [taskId],
+        );
+        const row = task.rows[0];
+        if (!row || row.work_item_type !== 'story') return { ok: true };
+        const details: string[] = [];
+        if (!row.acceptance_criteria?.trim()) details.push('acceptance_criteria_missing');
+        const qa = await this.db.query<{ status: string }>(
+            'SELECT status FROM tasks.qa_reviews WHERE goal_id=$1 AND task_id=$2 ORDER BY created_at DESC, id DESC LIMIT 1',
+            [row.goal_id, taskId],
+        );
+        if (qa.rows[0]?.status !== 'approved') details.push(qa.rows[0]?.status === 'observed' ? 'qa_observations_pending' : 'qa_not_approved');
+        const bugs = await this.db.query<{ count: string }>(
+            `SELECT count(*)::text AS count FROM tasks.tasks
+             WHERE goal_id=$1 AND related_task_id=$2 AND work_item_type='bug' AND complete=false`,
+            [row.goal_id, taskId],
+        );
+        if (Number(bugs.rows[0]?.count ?? 0) > 0) details.push('blocking_bugs_open');
+        if (row.sprint_id != null) {
+            const acceptance = await this.db.query<{ status: string }>(
+                'SELECT status FROM tasks.sprint_review_acceptances WHERE goal_id=$1 AND sprint_id=$2 AND task_id=$3',
+                [row.goal_id, row.sprint_id, taskId],
+            );
+            if (acceptance.rows[0]?.status !== 'accepted') details.push('functional_acceptance_missing');
+        }
+        return details.length ? { ok: false, details } : { ok: true };
     }
 
     async updateOrdersForTask(orderData: TaskUpdateOrders): Promise<boolean> {
@@ -134,7 +164,25 @@ export class TasksRepository {
             ? [description, componentIdValue, parentId, creatorId, goalId, startDate, endDate, priorityId]
             : [description, componentIdValue, creatorId, goalId, statusId, kanbanOrder, startDate, endDate, priorityId];
 
-        const result = await this.db.query(query, args).catch(logError);
+        let result;
+        if (parentId) {
+            const client = await this.db.getClient();
+            try {
+                await client.query('BEGIN');
+                await lockTaskTreeClient(client);
+                await assertTaskParentClient(client, { goalId, parentId });
+                result = await client.query<{ id: number }>(query, args);
+                await client.query('COMMIT');
+            } catch (error) {
+                await client.query('ROLLBACK').catch(() => undefined);
+                logError(error);
+                return false;
+            } finally {
+                client.release();
+            }
+        } else {
+            result = await this.db.query<{ id: number }>(query, args).catch(logError);
+        }
 
         if (!result) {
             return false;
@@ -384,7 +432,27 @@ export class TasksRepository {
             where: { id: taskId },
         });
 
-        const result = await this.db.query(data.query, data.args).catch(logError);
+        let result;
+        if (Object.hasOwn(taskData, 'parent_id')) {
+            const client = await this.db.getClient();
+            try {
+                await client.query('BEGIN');
+                await lockTaskTreeClient(client);
+                const current = await client.query<{ goal_id: number }>('SELECT goal_id FROM tasks.tasks WHERE id = $1 FOR UPDATE', [taskId]);
+                const parentId = (taskData as TaskItemInDb).parent_id;
+                if (parentId !== null && parentId !== undefined) await assertTaskParentClient(client, { goalId: current.rows[0]?.goal_id ?? -1, parentId, taskId });
+                result = await client.query(data.query, data.args);
+                await client.query('COMMIT');
+            } catch (error) {
+                await client.query('ROLLBACK').catch(() => undefined);
+                logError(error);
+                return false;
+            } finally {
+                client.release();
+            }
+        } else {
+            result = await this.db.query(data.query, data.args).catch(logError);
+        }
 
         return !!(result?.rowCount && result.rowCount > 0);
     }
@@ -496,15 +564,20 @@ export class TasksRepository {
     }
 
     async updateTaskStatusId(data: TasksUpdateStatusId): Promise<boolean> {
-        const queryData = updateQuery({
-            table: 'tasks.tasks',
-            data: { status_id: data.statusId },
-            where: { id: data.taskId },
-        });
-
-        const result = await this.db.query(queryData.query, queryData.args).catch(logError);
-
-        return !!(result?.rowCount && result.rowCount > 0);
+        const result = await callWithCatch(() => this.db.dbDrizzle.transaction(async (tx) => {
+            await lockTaskTree(tx);
+            const [current] = await tx.select({ goalId: TasksSchema.goalId, statusId: TasksSchema.statusId, parentId: TasksSchema.parentId })
+                .from(TasksSchema).where(eq(TasksSchema.id, data.taskId)).for('update');
+            if (!current) return [];
+            const patch: Partial<typeof TasksSchema.$inferInsert> = { statusId: data.statusId };
+            if (current.statusId !== data.statusId && current.parentId === null) {
+                const [row] = await tx.select({ min: sql<number>`MIN(${TasksSchema.kanbanOrder})` }).from(TasksSchema)
+                    .where(and(eq(TasksSchema.goalId, current.goalId), data.statusId === null ? isNull(TasksSchema.statusId) : eq(TasksSchema.statusId, data.statusId), isNull(TasksSchema.parentId)));
+                patch.kanbanOrder = (row?.min ?? 0) - TasksRepository.KANBAN_ORDER_GAP;
+            }
+            return tx.update(TasksSchema).set(patch).where(eq(TasksSchema.id, data.taskId)).returning({ id: TasksSchema.id });
+        }));
+        return !!result?.length;
     }
 
     async fetchAllowedListIdsForTask(taskId: TaskItemInDb['id']): Promise<GoalListInDb['id'][]> {
@@ -551,9 +624,24 @@ export class TasksRepository {
             return this.fetchTaskByIdNew(data.id);
         }
 
-        const result = await callWithCatch(() =>
-            this.db.dbDrizzle.update(TasksSchema).set(updates).where(eq(TasksSchema.id, data.id)).returning()
-        );
+        const result = (updates.parentId !== undefined || updates.statusId !== undefined)
+            ? await this.db.dbDrizzle.transaction(async (tx) => {
+                await lockTaskTree(tx);
+                const [current] = await tx.select({ goalId: TasksSchema.goalId, statusId: TasksSchema.statusId, parentId: TasksSchema.parentId }).from(TasksSchema).where(eq(TasksSchema.id, data.id)).for('update');
+                if (!current) return [];
+                if (updates.parentId != null) await assertTaskParent(tx, { goalId: current.goalId, parentId: updates.parentId, taskId: data.id });
+                if (updates.statusId !== undefined && updates.statusId !== current.statusId && current.parentId === null) {
+                    const [row] = await tx.select({ min: sql<number>`MIN(${TasksSchema.kanbanOrder})` }).from(TasksSchema)
+                        .where(and(eq(TasksSchema.goalId, current.goalId), updates.statusId === null ? isNull(TasksSchema.statusId) : eq(TasksSchema.statusId, updates.statusId), isNull(TasksSchema.parentId)));
+                    updates.kanbanOrder = (row?.min ?? 0) - TasksRepository.KANBAN_ORDER_GAP;
+                }
+                return tx.update(TasksSchema).set(updates).where(eq(TasksSchema.id, data.id)).returning();
+            }).catch((error: unknown) => {
+                if (updates.parentId !== undefined || error instanceof TaskTreeIntegrityError || (error instanceof Error && error.name === 'TaskTreeIntegrityError')) throw new TaskTreeIntegrityError();
+                logError(error);
+                return [];
+            })
+            : await callWithCatch(() => this.db.dbDrizzle.update(TasksSchema).set(updates).where(eq(TasksSchema.id, data.id)).returning());
         return result?.[0] ?? null;
     }
 
@@ -748,7 +836,16 @@ export class TasksRepository {
                 values[column] = args.data[column] as never;
             }
         }
-        const result = await callWithCatch(() => this.db.dbDrizzle.insert(TasksSchema).values(values).returning());
+        const result = await callWithCatch(() => this.db.dbDrizzle.transaction(async (tx) => {
+            await lockTaskTree(tx);
+            if (values.parentId != null) await assertTaskParent(tx, { goalId: values.goalId, parentId: values.parentId });
+            else if (values.kanbanOrder == null) {
+                const [row] = await tx.select({ min: sql<number>`MIN(${TasksSchema.kanbanOrder})` }).from(TasksSchema)
+                    .where(and(eq(TasksSchema.goalId, values.goalId), values.statusId == null ? isNull(TasksSchema.statusId) : eq(TasksSchema.statusId, values.statusId), isNull(TasksSchema.parentId)));
+                values.kanbanOrder = (row?.min ?? 0) - TasksRepository.KANBAN_ORDER_GAP;
+            }
+            return tx.insert(TasksSchema).values(values).returning();
+        }));
         if (!result) return [];
         return result;
     }
@@ -765,7 +862,7 @@ export class TasksRepository {
             eq(TasksSchema.goalId, goalId),
             columnId === null ? isNull(TasksSchema.statusId) : eq(TasksSchema.statusId, columnId),
             isNotNull(TasksSchema.kanbanOrder),
-            isNull(TasksSchema.parentId),
+            ...(filters?.includeSubtasks ? [] : [isNull(TasksSchema.parentId)]),
         ];
         if (cursor !== null) {
             conditions.push(gt(TasksSchema.kanbanOrder, cursor));
@@ -791,11 +888,29 @@ export class TasksRepository {
                 )
             );
         }
+        if (filters?.workItemTypes && filters.workItemTypes.length > 0) {
+            conditions.push(inArray(TasksSchema.workItemType, filters.workItemTypes));
+        }
+        if (filters?.priorityIds && filters.priorityIds.length > 0) {
+            const priorities = filters.priorityIds.filter((id): id is 1 | 2 | 3 => id === 1 || id === 2 || id === 3);
+            if (priorities.length) conditions.push(inArray(TasksSchema.priorityId, priorities));
+        }
 
         const result = await callWithCatch(() =>
             this.db.dbDrizzle.select().from(TasksSchema).where(and(...conditions)).orderBy(asc(TasksSchema.kanbanOrder)).limit(20)
         );
-        return result ?? [];
+        if (!result?.length) return [];
+        // Enrich the Kanban payload in one query so Scrum-aware cards can show QA
+        // state without issuing one request per card.
+        const qa = await this.db.query<{ task_id: number; status: 'pending' | 'observed' | 'approved' }>(
+            `SELECT DISTINCT ON (task_id) task_id, status
+             FROM tasks.qa_reviews
+             WHERE goal_id = $1 AND task_id = ANY($2::int[])
+             ORDER BY task_id, created_at DESC, id DESC`,
+            [goalId, result.map((task) => task.id)],
+        ).catch(() => ({ rows: [] as { task_id: number; status: 'pending' | 'observed' | 'approved' }[] }));
+        const qaByTask = new Map(qa.rows.map((row) => [row.task_id, row.status]));
+        return result.map((task) => ({ ...task, qaStatus: qaByTask.get(task.id) ?? null })) as TasksSchemaTypeForSelect[];
     }
 
     async fetchTaskWithMinKanbanOrder(goalId: number, columnId?: number | null): Promise<number | null> {

@@ -44,6 +44,9 @@ export class TaskMovePlanner {
         const withSubtasks = destination.hasPermissions(GoalPermissions.TASKS_CAN_ADD_SUBTASKS);
         const taskIds = [task.id, ...(withSubtasks ? subtaskIds : [])];
         const leftBehindSubtaskIds = withSubtasks ? [] : subtaskIds;
+        if (leftBehindSubtaskIds.length > 0) return { ok: false, reason: 'hierarchy_conflict' };
+        const relationshipConflict = await this.repository.getScrumMoveConflict?.(taskIds, mode);
+        if (relationshipConflict) return { ok: false, reason: 'scrum_relationship' };
 
         // Logged time is never duplicated: a copy starts without it, a move takes the entries the user may log there
         const timeEntryUserIds = mode === 'move' ? this.timeEntryUsers(destination) : [];

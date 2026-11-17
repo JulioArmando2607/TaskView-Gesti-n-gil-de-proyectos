@@ -1,0 +1,72 @@
+# Disposable functional verification of the validated synthetic recovery artifact.
+# Use only with -p taskview-l01-b5a7e65 and --profile br07; never --remove-orphans.
+services:
+  br07-db:
+    image: postgres:17@sha256:846a7ddaa67a4b354ae1d21087b683901aa6113a4ed626d3787cfbf6c85e3e07
+    pull_policy: never
+    profiles: [br07]
+    environment:
+      POSTGRES_DB: taskview_l01_br07_20261114
+      POSTGRES_USER: taskview_l01_br07
+      POSTGRES_PASSWORD: ${L01_BR07_DB_PASSWORD:?Generate a new synthetic BR07 password}
+    volumes:
+      - br07_db_data:/var/lib/postgresql/data
+      - br07_files:/br07-files
+    networks: [br07_net]
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskview_l01_br07 -d taskview_l01_br07_20261114"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  br07-api:
+    image: taskview-l01-api:b5a7e65
+    pull_policy: never
+    profiles: [br07]
+    environment:
+      DB_HOST: br07-db
+      DB_PORT: "5432"
+      DB_NAME: taskview_l01_br07_20261114
+      DB_USER: taskview_l01_br07
+      DB_PASSWORD: ${L01_BR07_DB_PASSWORD:?Generate a new synthetic BR07 password}
+      NODE_ENV: production
+      TZ: UTC
+      APP_PORT: "1401"
+      APP_URL: http://br07-api:1401
+      API_PUBLIC_URL: http://br07-api:1401
+      JWT_ALG: HS256
+      JWT_SIGN: ${L01_BR07_JWT_SIGN:?Generate a new synthetic BR07 signing key}
+      ENCRYPTION_KEY: ${L01_BR07_ENCRYPTION_KEY:?Generate a new synthetic BR07 encryption key}
+      ACCESS_LIFE_TIME: 15m
+      REFRESH_LIFE_TIME: 1d
+      AUTH_LOGIN_METHODS: password
+      PASSWORD_CHANGE_CONFIRMATION: password
+      INVITE_EMAIL_ENABLED: "false"
+      WEBHOOKS_ALLOW_PRIVATE_URLS: "false"
+      CORS_REMOVE_DEFAULT_ALLOWED_ORIGINS: "true"
+      CORS_ALLOWED_ORIGINS: http://br07-api:1401
+      FILE_STORAGE_PROVIDER: local
+      FILE_STORAGE_LOCAL_DIR: /usr/src/app/data/files
+    volumes:
+      - br07_files:/usr/src/app/data/files
+      - br07_logs:/usr/src/app/logs
+    networks: [br07_net]
+    depends_on:
+      br07-db:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  br07_db_data:
+    name: taskview-l01-b5a7e65_br07_20261114_pgdata
+  br07_files:
+    name: taskview-l01-b5a7e65_br07_20261114_files
+  br07_logs:
+    name: taskview-l01-b5a7e65_br07_20261114_logs
+
+networks:
+  br07_net:
+    name: taskview-l01-b5a7e65_br07_20261114_net
+    driver: bridge
+    internal: true

@@ -156,7 +156,7 @@ export class RecurrenceGenerator {
 
         if (!outcome) return null;
 
-        if ('ended' in outcome) {
+        if (outcome.ended) {
             eventBus.emit('recurrence.ended', {
                 ruleId: outcome.ended.id,
                 goalId: outcome.ended.goalId,

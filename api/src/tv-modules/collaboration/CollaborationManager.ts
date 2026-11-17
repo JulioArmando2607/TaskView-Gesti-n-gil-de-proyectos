@@ -88,7 +88,6 @@ export class CollaborationManager {
                     email: item.email,
                     goal_id: item.goal_id,
                     goalId: item.goal_id,
-                    // @ts-expect-error
                     invitation_date: item.invitation_date,
                     invitationDate: item.invitation_date,
                     roles: [],

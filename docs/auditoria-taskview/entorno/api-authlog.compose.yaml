@@ -1,0 +1,6 @@
+# Lista 01: activate only the verified API image in the isolated laboratory.
+# Use with compose.yaml, web-security.compose.yaml and the private .env.
+services:
+  api:
+    image: taskview-l01-api:authlog-20261114
+    pull_policy: never

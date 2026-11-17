@@ -1,0 +1,33 @@
+# Recovery-only overlay. Always combine with compose.yaml and pass
+# -p taskview-l01-b5a7e65 explicitly. Do not add this service to the active API network.
+services:
+  recovery-db:
+    image: postgres:17@sha256:846a7ddaa67a4b354ae1d21087b683901aa6113a4ed626d3787cfbf6c85e3e07
+    profiles: [recovery]
+    environment:
+      POSTGRES_DB: ${L01_RECOVERY_DB_NAME:?Set a synthetic recovery database name}
+      POSTGRES_USER: ${L01_RECOVERY_DB_USER:?Set a synthetic recovery database user}
+      POSTGRES_PASSWORD: ${L01_RECOVERY_DB_PASSWORD:?Set a new synthetic recovery password}
+    volumes:
+      - recovery_data:/var/lib/postgresql/data
+      - recovery_files:/recovery-files
+    networks:
+      - recovery_net
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  recovery_data:
+    name: taskview-l01-b5a7e65_recovery_20261114_pgdata
+  recovery_files:
+    name: taskview-l01-b5a7e65_recovery_20261114_files
+
+networks:
+  recovery_net:
+    name: taskview-l01-b5a7e65_recovery_20261114_net
+    driver: bridge
+    internal: true

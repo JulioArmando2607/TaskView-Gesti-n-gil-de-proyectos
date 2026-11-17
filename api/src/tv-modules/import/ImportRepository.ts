@@ -15,6 +15,7 @@ import {
 } from 'taskview-db-schemas';
 import { Database } from '../../modules/db';
 import { callWithCatch } from '../../utils/helpers';
+import { assertTaskParent, lockTaskTree } from '../tasks/TaskTreeIntegrity';
 import type {
     ImportRepoAssigneeRow,
     ImportRepoCreateJobArgs,
@@ -276,29 +277,35 @@ export class ImportRepository {
     }
 
     async insertTasks(rows: ImportRepoTaskRow[]): Promise<number[]> {
-        return this.insertChunked(rows, (chunk) =>
-            this.db.dbDrizzle
-                .insert(TasksSchema)
-                .values(
-                    chunk.map((row) => ({
-                        goalId: row.goalId,
-                        parentId: row.parentId,
-                        description: row.description,
-                        note: row.note,
-                        sourceUrl: row.sourceUrl,
-                        statusId: row.statusId,
-                        goalListId: row.goalListId,
-                        startDate: row.startDate,
-                        endDate: row.endDate,
-                        priorityId: row.priorityId,
-                        complete: row.complete,
-                        dateComplete: row.dateComplete,
-                        kanbanOrder: row.kanbanOrder,
-                        creatorId: row.creatorId,
-                    })),
-                )
-                .returning({ id: TasksSchema.id }),
-        );
+        if (!rows.length) return [];
+        return this.db.dbDrizzle.transaction(async (tx) => {
+            await lockTaskTree(tx);
+            for (const row of rows) {
+                if (row.parentId !== null) await assertTaskParent(tx, { goalId: row.goalId, parentId: row.parentId });
+            }
+            const ids: number[] = [];
+            for (let i = 0; i < rows.length; i += INSERT_CHUNK_SIZE) {
+                const chunk = rows.slice(i, i + INSERT_CHUNK_SIZE);
+                const inserted = await tx.insert(TasksSchema).values(chunk.map((row) => ({
+                    goalId: row.goalId,
+                    parentId: row.parentId,
+                    description: row.description,
+                    note: row.note,
+                    sourceUrl: row.sourceUrl,
+                    statusId: row.statusId,
+                    goalListId: row.goalListId,
+                    startDate: row.startDate,
+                    endDate: row.endDate,
+                    priorityId: row.priorityId,
+                    complete: row.complete,
+                    dateComplete: row.dateComplete,
+                    kanbanOrder: row.kanbanOrder,
+                    creatorId: row.creatorId,
+                }))).returning({ id: TasksSchema.id });
+                ids.push(...inserted.map((item) => item.id));
+            }
+            return ids;
+        });
     }
 
     async insertTaskTags(rows: ImportRepoTaskTagRow[]): Promise<void> {

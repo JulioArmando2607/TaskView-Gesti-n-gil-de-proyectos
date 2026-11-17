@@ -6,6 +6,7 @@ import { TvCollaborationApi } from "./api/collaboration";
 import TvGoalListApi from "./api/goals-list";
 import TvTagsApi from "./api/tags";
 import TvIntegrationsApi from "./api/integrations";
+import TvScrumReportsApi from './api/scrum-reports'
 import TvKanban from "./api/kanban";
 import TvNotificationsApi from "./api/notifications";
 import TvWebhooks from "./api/webhooks";
@@ -26,6 +27,7 @@ import TvBillingApi from "./api/billing";
 import TvInvoicesApi from "./api/invoices";
 import TvFilesApi from "./api/files";
 import TvAutomationsApi from "./api/automations";
+import TvScrumApi from "./api/scrum";
 
 export class TvApi {
 
@@ -46,6 +48,7 @@ export class TvApi {
     public kanban: TvKanban;
 
     public integrations: TvIntegrationsApi;
+    public scrumReports: TvScrumReportsApi;
 
     public notifications: TvNotificationsApi;
 
@@ -80,6 +83,8 @@ export class TvApi {
     public files: TvFilesApi;
     public automations: TvAutomationsApi;
 
+    public scrum: TvScrumApi;
+
     constructor($axios: AxiosInstance) {
         this.$axios = $axios;
 
@@ -98,6 +103,7 @@ export class TvApi {
         this.kanban = new TvKanban(this.$axios);
 
         this.integrations = new TvIntegrationsApi(this.$axios);
+        this.scrumReports = new TvScrumReportsApi(this.$axios);
 
         this.notifications = new TvNotificationsApi(this.$axios);
 
@@ -131,6 +137,7 @@ export class TvApi {
         this.invoices = new TvInvoicesApi(this.$axios);
         this.files = new TvFilesApi(this.$axios);
         this.automations = new TvAutomationsApi(this.$axios);
+        this.scrum = new TvScrumApi(this.$axios);
     }
 
     public get baseUrl(): string | undefined {

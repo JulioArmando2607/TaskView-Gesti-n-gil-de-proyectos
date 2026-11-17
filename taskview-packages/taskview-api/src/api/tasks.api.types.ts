@@ -35,6 +35,14 @@ export interface TaskBase {
     sprintId: number | null;
     estimateValue: number | string | null;
 
+    /** Optional Scrum metadata returned by Kanban/Scrum-aware views. */
+    workItemType?: 'task' | 'story' | 'bug';
+    epicId?: number | null;
+    acceptanceCriteria?: string | null;
+    relatedTaskId?: number | null;
+    issueKey?: string | null;
+    qaStatus?: 'pending' | 'observed' | 'approved' | null;
+
     recurrenceRuleId: number | null;
     recurrenceInstanceDate: string | null;
 }

@@ -20,6 +20,8 @@ import type {
     SprintPlanningPage,
     SprintResult,
     SprintSaveRetroArgs,
+    SprintSaveRetroActionArgs,
+    SprintUpdateRetroActionArgs,
     SprintSetCadenceArgs,
     SprintSetTaskArgs,
     SprintUpdateArgs,
@@ -56,10 +58,11 @@ export class SprintsManager {
         const sprint = await this.repository.getById(sprintId);
         if (!sprint) return null;
         const retro = await this.repository.getRetro(sprintId);
+        const actions = await this.repository.getRetroActions(sprintId);
         return {
             ...sprint,
-            retro: retro
-                ? { wentWell: retro.wentWell, wentBad: retro.wentBad, actionItems: retro.actionItems }
+            retro: retro || actions.length
+                ? { wentWell: retro?.wentWell ?? null, wentBad: retro?.wentBad ?? null, actionItems: retro?.actionItems ?? null, actions }
                 : null,
         };
     }
@@ -184,9 +187,30 @@ export class SprintsManager {
     async saveRetro(args: SprintSaveRetroArgs): Promise<SprintResult<SprintSaveRetroArgs>> {
         const sprint = await this.repository.getById(args.sprintId);
         if (!sprint) return fail('not_found');
+        if (sprint.status === 'completed') return fail('invalid_state', 'completed sprints are read-only');
         const saved = await this.repository.saveRetro({ ...args, editedBy: this.initiatorId });
         if (!saved) return fail('invalid_state');
         return ok(args);
+    }
+
+    async listRetroActions(sprintId: number) {
+        const sprint = await this.repository.getById(sprintId);
+        return sprint ? this.repository.getRetroActions(sprintId) : null;
+    }
+
+    async createRetroAction(args: SprintSaveRetroActionArgs) {
+        const sprint = await this.repository.getById(args.sprintId);
+        if (!sprint || sprint.status === 'completed') return fail('invalid_state', 'completed sprints are read-only');
+        return ok(await this.repository.saveRetroAction({ sprintId: args.sprintId, description: args.description.trim(), owner: args.owner ?? null, status: args.status ?? 'planned' }));
+    }
+
+    async updateRetroAction(args: SprintUpdateRetroActionArgs & { sprintId: number }) {
+        const sprint = await this.repository.getById(args.sprintId);
+        const action = await this.repository.getRetroAction(args.actionId);
+        if (!sprint || !action || action.sprintId !== args.sprintId) return fail('not_found');
+        if (sprint.status === 'completed') return fail('invalid_state', 'completed sprints are read-only');
+        const { actionId, sprintId, ...changes } = args;
+        return ok(await this.repository.updateRetroAction({ id: actionId, ...changes }));
     }
 
     async setTaskSprint(args: SprintSetTaskArgs): Promise<SprintResult<{ taskId: number; sprintId: number | null }>> {

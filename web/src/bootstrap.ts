@@ -72,6 +72,11 @@ function buildRoutes(extensions: TvWebExtension[]): RouteRecordRaw[] {
           component: () => import('./pages/user/kanban.vue'),
         },
         {
+          path: ':projectId/scrum',
+          name: 'scrum',
+          component: () => import('./pages/user/scrum.vue'),
+        },
+        {
           path: ':projectId/graph',
           name: 'graph',
           component: () => import('./pages/user/graph.vue'),
@@ -85,6 +90,11 @@ function buildRoutes(extensions: TvWebExtension[]): RouteRecordRaw[] {
           path: ':projectId/sprints',
           name: 'sprints',
           component: () => import('./pages/user/sprints.vue'),
+        },
+        {
+          path: ':projectId/reports',
+          name: 'scrum-reports',
+          component: () => import('./pages/user/scrum-reports.vue'),
         },
         {
           path: ':projectId/files',

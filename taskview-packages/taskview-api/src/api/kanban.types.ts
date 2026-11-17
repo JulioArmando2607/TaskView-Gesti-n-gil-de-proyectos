@@ -5,6 +5,10 @@ export type KanbanFilters = {
     assigneeIds?: number[];
     /** Filter to a sprint by id. */
     sprintId?: number;
+    /** Include child tasks on the board when enabled. */
+    includeSubtasks?: boolean;
+    workItemTypes?: Array<'task' | 'story' | 'bug'>;
+    priorityIds?: number[];
 };
 
 export type KanbanColumnItem = {

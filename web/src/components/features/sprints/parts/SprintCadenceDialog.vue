@@ -169,7 +169,7 @@ watch(startDateModel, (value) => {
 
 const formattedStart = computed(() =>
   startDateModel.value
-    ? useDateFormat(new Date(startDateModel.value.toString()), 'DD MMM YYYY').value
+    ? useDateFormat(new Date(startDateModel.value.year, startDateModel.value.month - 1, startDateModel.value.day), 'DD MMM YYYY').value
     : t('sprints.cadence.startDate'),
 )
 

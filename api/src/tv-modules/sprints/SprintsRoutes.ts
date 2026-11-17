@@ -46,6 +46,9 @@ export default class SprintsRoutes implements Routable {
         this.router.post('/sprint/:sprintId/resume', [IsLoggedIn, requireSprintPermission(GoalPermissions.SPRINT_CAN_MANAGE, goalIdFromSprint)], this.controller.resume);
         this.router.delete('/sprint/:sprintId', [IsLoggedIn, requireSprintPermission(GoalPermissions.SPRINT_CAN_MANAGE, goalIdFromSprint)], this.controller.remove);
         this.router.put('/sprint/:sprintId/retro', [IsLoggedIn, requireSprintPermission(GoalPermissions.SPRINT_CAN_MANAGE, goalIdFromSprint)], this.controller.saveRetro);
+        this.router.get('/sprint/:sprintId/retro-actions', [IsLoggedIn, requireSprintPermission(GoalPermissions.SPRINT_CAN_VIEW, goalIdFromSprint)], this.controller.listRetroActions);
+        this.router.post('/sprint/:sprintId/retro-actions', [IsLoggedIn, requireSprintPermission(GoalPermissions.SPRINT_CAN_MANAGE, goalIdFromSprint)], this.controller.createRetroAction);
+        this.router.patch('/sprint/:sprintId/retro-actions/:actionId', [IsLoggedIn, requireSprintPermission(GoalPermissions.SPRINT_CAN_MANAGE, goalIdFromSprint)], this.controller.updateRetroAction);
 
         // Assign a task to / out of a sprint — authorized against the task's goal.
         this.router.patch('/task/:taskId/sprint', [IsLoggedIn, canAssignSprintTasks], this.controller.setTaskSprint);

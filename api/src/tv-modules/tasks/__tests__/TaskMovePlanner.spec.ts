@@ -89,11 +89,9 @@ describe('TaskMovePlanner', () => {
         expect(decision.ok && decision.plan.leftBehind.timeEntries).toBe(0);
     });
 
-    it('leaves the subtasks behind without the subtask permission in the target project', async () => {
+    it('rejects a move that would leave subtasks behind', async () => {
         const decision = await planner({ target: [GoalPermissions.COMPONENT_CAN_ADD_TASKS, GoalPermissions.TIMETRACKING_CAN_MANAGE_ALL] }).plan(move);
-        expect(decision.ok && decision.plan.taskIds).toEqual([ROOT]);
-        expect(decision.ok && decision.plan.leftBehindSubtaskIds).toEqual(SUBTASKS);
-        expect(decision.ok && decision.plan.leftBehind.subtasks).toBe(2);
+        expect(decision).toEqual({ ok: false, reason: 'hierarchy_conflict' });
     });
 
     it('moves only the user\'s own time with the log permission, and none without time permissions', async () => {
@@ -121,15 +119,15 @@ describe('TaskMovePlanner', () => {
     });
 
     it('turns a decision into the preview the client shows', async () => {
-        const p = planner({ target: [GoalPermissions.COMPONENT_CAN_ADD_TASKS, GoalPermissions.TIMETRACKING_CAN_LOG] });
+        const p = planner({ target: [GoalPermissions.COMPONENT_CAN_ADD_TASKS, GoalPermissions.TASKS_CAN_ADD_SUBTASKS, GoalPermissions.TIMETRACKING_CAN_LOG] });
         expect(p.toPreview(await p.plan(move))).toEqual({
             allowed: true,
             reason: null,
             mode: 'move',
-            tasks: 1,
+            tasks: 3,
             timeEntries: 2,
             removals: REMOVALS,
-            leftBehind: { subtasks: 2, timeEntries: 5 },
+            leftBehind: { subtasks: 0, timeEntries: 5 },
         });
         expect(p.toPreview({ ok: false, reason: 'same_project' })).toEqual({
             allowed: false,

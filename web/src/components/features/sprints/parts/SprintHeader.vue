@@ -94,6 +94,7 @@ import { useDateFormat } from '@vueuse/core'
 import type { Sprint } from 'taskview-api'
 import { useSprintFormat } from '../composables/useSprintFormat'
 import { useGoalsStore } from '@/stores/goals.store'
+import { dateOnlyToLocalDate } from '@/helpers/dateOnly'
 import type { SprintTask } from '@/types/sprints.types'
 
 const props = defineProps<{
@@ -109,8 +110,8 @@ const goalsStore = useGoalsStore()
 const unit = computed(() => goalsStore.goalMap.get(props.sprint.goalId)?.estimateUnit ?? 'points')
 
 const dateRange = computed(() => {
-  const start = useDateFormat(new Date(props.sprint.startDate), 'DD MMM').value
-  const end = useDateFormat(new Date(props.sprint.endDate), 'DD MMM YYYY').value
+  const start = useDateFormat(dateOnlyToLocalDate(props.sprint.startDate), 'DD MMM').value
+  const end = useDateFormat(dateOnlyToLocalDate(props.sprint.endDate), 'DD MMM YYYY').value
   return `${start} – ${end}`
 })
 

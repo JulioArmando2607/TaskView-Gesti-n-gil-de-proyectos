@@ -1,0 +1,11 @@
+# Lista 04: local overlays for the isolated functional laboratory only.
+services:
+  migration:
+    image: taskview-l04-migration:20261116-safe
+    pull_policy: never
+  api:
+    image: taskview-l04-api:20261116
+    pull_policy: never
+  web:
+    image: taskview-l04-web:20261116
+    pull_policy: never

@@ -1,0 +1,5 @@
+# Lista 07: cierre controlado y Definition of Done sobre L04.
+services:
+  api:
+    image: taskview-l07-api:20261116
+    pull_policy: never

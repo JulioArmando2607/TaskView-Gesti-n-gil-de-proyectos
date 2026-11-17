@@ -11,13 +11,13 @@ export async function useLogout() {
 
   const deviceToken = getCurrentToken()
   if (deviceToken) {
-    await $tvApi.notifications.unregisterDevice(deviceToken).catch((err) => {
-      console.error('[Logout] Failed to unregister device token:', err)
+    await $tvApi.notifications.unregisterDevice(deviceToken).catch(() => {
+      console.error('[Logout] Failed to unregister device token')
     })
   }
 
-  const result = await $api.post<{ logout: boolean }>('/module/auth/logout').catch((err) => {
-    console.error(err, $api)
+  const result = await $api.post<{ logout: boolean }>('/module/auth/logout').catch(() => {
+    console.error('[Logout] Request failed')
   })
 
   if (result) {

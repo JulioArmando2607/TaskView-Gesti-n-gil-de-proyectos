@@ -28,6 +28,7 @@ import BillingRoutes from '../tv-modules/billing/BillingRoutes';
 import InvoicesRoutes from '../tv-modules/invoices/InvoicesRoutes';
 import FilesRoutes from '../tv-modules/files/FilesRoutes';
 import ImportRoutes from '../tv-modules/import/ImportRoutes';
+import ScrumRoutes from '../tv-modules/scrum/ScrumRoutes';
 import AutomationsRoutes from '../tv-modules/automations/AutomationsRoutes';
 import type { Routable } from '../types/routable.type';
 
@@ -38,6 +39,7 @@ const routes: Record<string, RoutableConstructor> = {
     '/module/goals': GoalsRoutes,
     '/module/goal_lists': GoalListRoutes,
     '/module/tasks': TasksRoutes,
+    '/module/scrum': ScrumRoutes,
     '/module/collaboration': CollaborationRoutes,
     '/module/collaborationroles': CollaborationRolesRoutes,
     '/module/tags': TagsRouter,

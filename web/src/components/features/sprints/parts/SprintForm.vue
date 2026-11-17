@@ -174,12 +174,12 @@ const capacityModel = computed({
 
 const formattedStart = computed(() =>
   startDateModel.value
-    ? useDateFormat(new Date(startDateModel.value.toString()), 'DD MMM YYYY').value
+    ? useDateFormat(new Date(startDateModel.value.year, startDateModel.value.month - 1, startDateModel.value.day), 'DD MMM YYYY').value
     : t('sprints.fields.startDate'),
 )
 const formattedEnd = computed(() =>
   endDateModel.value
-    ? useDateFormat(new Date(endDateModel.value.toString()), 'DD MMM YYYY').value
+    ? useDateFormat(new Date(endDateModel.value.year, endDateModel.value.month - 1, endDateModel.value.day), 'DD MMM YYYY').value
     : t('sprints.fields.endDate'),
 )
 

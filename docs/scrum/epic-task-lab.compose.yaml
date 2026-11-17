@@ -1,0 +1,11 @@
+# Activate the epic/story/task grouping only in the isolated TaskView lab.
+services:
+  migration:
+    image: taskview-l01-migration:epic-task-20261116
+    pull_policy: never
+  api:
+    image: taskview-l01-api:epic-task-nested-20261116
+    pull_policy: never
+  web:
+    image: taskview-l01-web:epic-task-datefix-20261116
+    pull_policy: never

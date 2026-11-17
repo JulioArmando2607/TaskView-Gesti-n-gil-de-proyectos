@@ -166,6 +166,7 @@ async function runWith(behaviour: StubBehaviour = {}) {
 }
 
 async function applyMigration(dir: string) {
+    if (process.env.L01_TEST_DB_ONLY === '1') return;
     const client = await Database.getInstance().getClient();
     await client.query('SELECT pg_advisory_lock(1401067)');
     try {

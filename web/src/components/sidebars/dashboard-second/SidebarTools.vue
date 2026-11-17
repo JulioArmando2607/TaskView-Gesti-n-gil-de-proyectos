@@ -65,6 +65,7 @@ const currentProject = computed<Project | null>(() =>
 
 const {
   canViewKanban,
+  canViewTasks,
   canViewGraph,
   canViewSprints,
   canViewFiles,
@@ -96,6 +97,10 @@ const tools = computed<Tool[]>(() => {
     },
   ]
 
+  if (canViewTasks.value) {
+    list.splice(1, 0, { key: 'scrum', label: 'Scrum', icon: 'i-lucide-layers-3', to: { name: 'scrum', params: { projectId: id } }, active: () => route.name === 'scrum' })
+  }
+
   if (canViewKanban.value) {
     list.push({ key: 'kanban', label: t('contextMenu.kanban'), icon: 'i-lucide-kanban', to: { name: 'kanban', params: { projectId: id } }, active: () => route.name === 'kanban' })
   }
@@ -105,6 +110,7 @@ const tools = computed<Tool[]>(() => {
   }
   if (canViewSprints.value) {
     list.push({ key: 'sprints', label: t('contextMenu.sprints'), icon: 'i-lucide-rocket', to: { name: 'sprints', params: { projectId: id } }, active: () => route.name === 'sprints' })
+    list.push({ key: 'scrum-reports', label: 'Reportes Scrum', icon: 'i-lucide-chart-no-axes-combined', to: { name: 'scrum-reports', params: { projectId: id } }, active: () => route.name === 'scrum-reports' })
   }
   if (canViewFiles.value) {
     list.push({ key: 'files', label: t('contextMenu.files'), icon: 'i-lucide-paperclip', to: { name: 'files', params: { projectId: id } }, active: () => route.name === 'files' })

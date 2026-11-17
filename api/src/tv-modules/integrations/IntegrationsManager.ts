@@ -26,7 +26,7 @@ import {
 import { randomBytes } from 'crypto';
 import { safeCompareHex, sha256Hex } from '../oauth/oauth.utils';
 import { getGitHubOAuthUrl, exchangeGitHubCode, fetchGitHubRepos, fetchGitHubIssues, createGitHubWebhook, updateGitHubIssueState, GITHUB_BASE_URL } from './providers/github.provider';
-import { getGitLabOAuthUrl, exchangeGitLabCode, fetchGitLabRepos, fetchGitLabIssues, createGitLabWebhook, updateGitLabIssueState, refreshGitLabToken, GITLAB_BASE_URL } from './providers/gitlab.provider';
+import { getGitLabOAuthUrl, exchangeGitLabCode, fetchGitLabRepos, fetchGitLabIssues, createGitLabWebhook, updateGitLabIssueState, refreshGitLabToken, GITLAB_BASE_URL, GITLAB_READ_ONLY } from './providers/gitlab.provider';
 import { getGiteaOAuthUrl, exchangeGiteaCode, fetchGiteaRepos, fetchGiteaIssues, createGiteaWebhook, updateGiteaIssueState, refreshGiteaToken, verifyGiteaToken, GITEA_BASE_URL } from './providers/gitea.provider';
 import { integrationsDebugLog } from './debugLog';
 
@@ -390,6 +390,11 @@ export class IntegrationsManager {
         const { integration } = mapping;
         $logger.debug({ taskId, complete, provider: integration.provider, isActive: integration.isActive, issueNumber: mapping.issueNumber, issueState: mapping.issueState }, '[integrations] onTaskCompleteChanged');
         if (!integration.isActive || !integration.accessTokenEncrypted || !integration.repoFullName) return true;
+
+        if (integration.provider === 'gitlab' && GITLAB_READ_ONLY) {
+            $logger.debug({ taskId, integrationId: integration.id }, '[integrations] GitLab is read-only; skipping remote issue update');
+            return true;
+        }
 
         const targetState = complete ? 'closed' : 'open';
         if (mapping.issueState === targetState) {

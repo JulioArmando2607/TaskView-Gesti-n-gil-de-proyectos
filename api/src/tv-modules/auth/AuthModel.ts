@@ -17,22 +17,17 @@ export default class AuthModel {
         const query = isEmail
             ? 'select * from tv_auth.users where lower(email) = $1 order by id limit 1'
             : 'select * from tv_auth.users where lower(login) = $1 order by id limit 1';
-        $logger.info({ field }, `[AuthModel:getUserByLogin] field`);
         try {
             const data = await this.db.query<UserDbRecord>(query, [login.toLowerCase()]);
-
-            $logger.info({ login }, `[AuthModel:getUserByLogin] ${query}`);
-            $logger.info(data, `[AuthModel:getUserByLogin] data`);
-
             if (data.rows && data.rows.length > 0) {
+                $logger.debug({ field, found: true }, 'Auth lookup completed');
                 return data.rows[0];
             }
-        } catch (error: any) {
-            $logger.error(error);
-            $logger.warn(`Can not find user by login ${login}`);
+        } catch {
+            $logger.error({ operation: 'getUserByLogin' }, 'Auth lookup failed');
             return false;
         }
-        $logger.info(`[AuthModel:getUserByLogin] no user by login`);
+        $logger.debug({ field, found: false }, 'Auth lookup completed');
         return false;
     }
 
@@ -47,8 +42,8 @@ export default class AuthModel {
                 .where(sql`lower(${UsersSchema.email}) = ${email.toLowerCase()}`)
                 .returning({ id: UsersSchema.id });
             return rows.length > 0;
-        } catch (error: unknown) {
-            $logger.error(error, 'Can not update login code');
+        } catch {
+            $logger.error({ operation: 'updateLoginCode' }, 'Auth database operation failed');
             return false;
         }
     }
@@ -66,8 +61,8 @@ export default class AuthModel {
                 .returning({ rememberToken: UsersSchema.rememberToken, attempts: UsersSchema.loginCodeAttempts });
             if (!row?.rememberToken) return null;
             return { rememberToken: row.rememberToken, attempts: row.attempts };
-        } catch (error: unknown) {
-            $logger.error(error, 'Can not register login code attempt');
+        } catch {
+            $logger.error({ operation: 'registerLoginCodeAttempt' }, 'Auth database operation failed');
             return null;
         }
     }
@@ -117,8 +112,8 @@ export default class AuthModel {
                 .where(and(eq(UsersSchema.id, args.userId), eq(UsersSchema.rememberToken, args.rememberToken)))
                 .returning({ id: UsersSchema.id });
             return rows.length > 0;
-        } catch (error: unknown) {
-            $logger.error(error, 'Can not consume login code');
+        } catch {
+            $logger.error({ operation: 'consumeLoginCode' }, 'Auth database operation failed');
             return false;
         }
     }
@@ -142,8 +137,8 @@ export default class AuthModel {
             }
             $logger.debug('User registration error');
             return false;
-        } catch (error: any) {
-            $logger.error({ err: error, login, email }, 'Can not insert user into DB');
+        } catch {
+            $logger.error({ operation: 'registerUserInDb' }, 'Auth database operation failed');
             return false;
         }
     }
@@ -164,8 +159,8 @@ export default class AuthModel {
                 .where(sql`lower(${CollaborationUsersSchema.email}) = ${normalized}`)
                 .limit(1);
             return collaborators.length > 0;
-        } catch (error: unknown) {
-            $logger.error(error, '[AuthModel:isEmailInvited] failed to check invitations');
+        } catch {
+            $logger.error({ operation: 'isEmailInvited' }, 'Auth database operation failed');
             return false;
         }
     }
@@ -178,8 +173,8 @@ export default class AuthModel {
                 return result.rows[0];
             }
             return false;
-        } catch (error) {
-            console.error('Error fetching user:', error);
+        } catch {
+            $logger.error({ operation: 'fetchUserById' }, 'Auth database operation failed');
             return false;
         }
     }
@@ -192,8 +187,8 @@ export default class AuthModel {
                 return result.rows[0];
             }
             return false;
-        } catch (error) {
-            console.error('Error fetching user:', error);
+        } catch {
+            $logger.error({ operation: 'fetchUserByEmail' }, 'Auth database operation failed');
             return false;
         }
     }
@@ -207,8 +202,8 @@ export default class AuthModel {
                 .set({ confirmEmailCode: null, block: 0 })
                 .where(sql`lower(${UsersSchema.email}) = ${email.toLowerCase()}`);
             return (result.rowCount ?? 0) > 0;
-        } catch (error) {
-            $logger.error(error, `Error marking email confirmed for ${email}`);
+        } catch {
+            $logger.error({ operation: 'markEmailConfirmed' }, 'Auth database operation failed');
             return false;
         }
     }
@@ -222,7 +217,7 @@ export default class AuthModel {
             const result = await this.db.query(query, [block, login.toLowerCase(), code]);
             return !!(result.rowCount && result.rowCount > 0);
         } catch (_error) {
-            $logger.error('Error confirming email', { login, code });
+            $logger.error({ operation: 'confirmEmail' }, 'Auth database operation failed');
             return false;
         }
     }
@@ -245,8 +240,8 @@ export default class AuthModel {
                 )
                 .returning({ id: UsersSchema.id });
             return rows.length > 0;
-        } catch (error: unknown) {
-            $logger.error(error, 'Can not consume password reminder code');
+        } catch {
+            $logger.error({ operation: 'consumeReminderCode' }, 'Auth database operation failed');
             return false;
         }
     }
@@ -270,7 +265,7 @@ export default class AuthModel {
             const result = await this.db.query(query, args);
             return !!(result.rowCount && result.rowCount > 0);
         } catch (_error) {
-            $logger.error('Error setting reminder code and time', { email, code, time });
+            $logger.error({ operation: 'setReminderCodeAndTime' }, 'Auth database operation failed');
             return false;
         }
     }
@@ -304,7 +299,7 @@ export default class AuthModel {
             if (pgCode === '23505') {
                 return 'conflict';
             }
-            $logger.error(error, `Can not update credentials for user ${args.userId}`);
+            $logger.error({ operation: 'updateUserCredentials', userId: args.userId }, 'Auth database operation failed');
             return 'error';
         }
     }
@@ -340,7 +335,7 @@ export default class AuthModel {
             if (pgCode === '23505') {
                 return 'conflict';
             }
-            $logger.error(error, `Can not update email for user ${args.userId}`);
+            $logger.error({ operation: 'updateUserEmail', userId: args.userId }, 'Auth database operation failed');
             return 'error';
         }
     }
@@ -361,8 +356,8 @@ export default class AuthModel {
             const query = 'delete from tv_auth.user_tokens where user_id = $1';
             const result = await this.db.query(query, [userId]);
             return !!result.rowCount;
-        } catch (error: any) {
-            $logger.error(`Can not delete ${userId}`, { errorMessage: error.message, errorStack: error.stack });
+        } catch {
+            $logger.error({ operation: 'clearAllSessionTokensForUser', userId }, 'Auth database operation failed');
             return false;
         }
     }
@@ -377,8 +372,8 @@ export default class AuthModel {
                     .returning({ id: AccountDeletionSchema.id });
                 return rows.length > 0;
             });
-        } catch (error: unknown) {
-            $logger.error(error, 'Can not save account deletion code');
+        } catch {
+            $logger.error({ operation: 'addDeleteAccountCode', userId: args.userId }, 'Auth database operation failed');
             return false;
         }
     }
@@ -400,8 +395,8 @@ export default class AuthModel {
                 .where(and(eq(UsersSchema.id, args.userId), exists(validCode)))
                 .returning({ id: UsersSchema.id });
             return rows.length > 0;
-        } catch (error: unknown) {
-            $logger.error(error, 'Can not delete user account');
+        } catch {
+            $logger.error({ operation: 'deleteAccountByCode', userId: args.userId }, 'Auth database operation failed');
             return false;
         }
     }

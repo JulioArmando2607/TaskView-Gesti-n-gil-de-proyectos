@@ -52,15 +52,48 @@
         />
       </div>
     </div>
+    <div class="mt-4 border-t border-default pt-4 space-y-3">
+      <div class="flex items-center justify-between">
+        <h4 class="font-medium">
+          Acciones de mejora
+        </h4>
+        <UButton
+          v-if="canManage"
+          label="Añadir acción"
+          size="xs"
+          @click="addAction"
+        />
+      </div>
+      <div
+        v-for="action in actions"
+        :key="action.id"
+        class="flex flex-wrap items-center gap-2 text-sm"
+      >
+        <span class="flex-1">{{ action.description }}</span>
+        <UBadge
+          :label="action.status"
+          variant="subtle"
+        />
+        <UInput
+          v-if="canManage"
+          v-model="action.owner"
+          type="number"
+          class="w-24"
+          placeholder="Responsable"
+          @change="updateAction(action)"
+        />
+      </div>
+    </div>
   </UCard>
 </template>
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { SprintRetro } from 'taskview-api'
+import type { SprintRetro, SprintRetroAction } from 'taskview-api'
 import { useTaskView } from '@/composables/useTaskView'
 import { useSprintsStore } from '@/stores/sprints.store'
+import { $tvApi } from '@/plugins/axios'
 
 type RetroKey = 'wentWell' | 'wentBad' | 'actionItems'
 
@@ -84,6 +117,7 @@ const fields = reactive<Record<RetroKey, string>>({
 })
 
 const loading = ref(false)
+const actions = ref<SprintRetroAction[]>(props.retro?.actions ?? [])
 
 watch(
   () => props.retro,
@@ -91,8 +125,19 @@ watch(
     fields.wentWell = retro?.wentWell ?? ''
     fields.wentBad = retro?.wentBad ?? ''
     fields.actionItems = retro?.actionItems ?? ''
+    actions.value = retro?.actions ?? []
   },
 )
+
+async function addAction() {
+  const saved = await $tvApi.sprints.createRetroAction({ sprintId: props.sprintId, description: 'Nueva acción', status: 'planned' })
+  if (saved) actions.value.push(saved)
+}
+
+async function updateAction(action: SprintRetroAction) {
+  const saved = await $tvApi.sprints.updateRetroAction(props.sprintId, action.id, { owner: action.owner, status: action.status })
+  if (saved) Object.assign(action, saved)
+}
 
 const dirty = computed(
   () =>

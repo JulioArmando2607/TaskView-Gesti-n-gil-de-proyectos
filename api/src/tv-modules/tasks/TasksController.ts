@@ -47,6 +47,8 @@ const TASK_MOVE_REASON_STATUS: Record<TaskMoveBlockReason, number> = {
     other_organization: 400,
     is_subtask: 400,
     no_target_permission: 403,
+    hierarchy_conflict: 409,
+    scrum_relationship: 409,
 };
 export class TasksController {
     /** @deprecated */
@@ -375,6 +377,8 @@ export class TasksController {
             if (result.reason === 'foreign_reference') {
                 return res.status(400).send('List, kanban column and parent must belong to the task project; use /module/tasks/move to move a task');
             }
+            if (result.reason === 'hierarchy_conflict') return res.status(409).json({ error: 'invalid_parent' });
+            if (result.reason === 'definition_of_done') return res.status(409).json({ error: result.reason, details: result.details ?? [] });
             return res.tvJson(null);
         }
 

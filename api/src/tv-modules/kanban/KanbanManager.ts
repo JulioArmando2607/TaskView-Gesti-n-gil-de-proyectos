@@ -97,7 +97,9 @@ export class KanbanManager {
         let maxOrder: number = 0;
 
         tasks.forEach((task) => {
-            task.kanbanOrder && (maxOrder = Math.max(maxOrder, task.kanbanOrder));
+            if (task.kanbanOrder) {
+                maxOrder = Math.max(maxOrder, task.kanbanOrder);
+            }
         });
 
         const tasksWithNewOrder = tasks.map((task, index) => {
@@ -130,10 +132,10 @@ export class KanbanManager {
         }
 
         // Получаем порядки предыдущей и следующей задач
-        let prevTask = data.prevTaskId
+        const prevTask = data.prevTaskId
             ? (await this.repository.getGoalTask({ taskId: data.prevTaskId, goalId: data.goalId }))?.kanbanOrder ?? null
             : null;
-        let nextTask = data.nextTaskId
+        const nextTask = data.nextTaskId
             ? (await this.repository.getGoalTask({ taskId: data.nextTaskId, goalId: data.goalId }))?.kanbanOrder ?? null
             : null;
 
@@ -165,10 +167,6 @@ export class KanbanManager {
 
             return mid;
         };
-
-        if (prevTask !== null && nextTask !== null && prevTask >= nextTask) {
-            newOrder = await getNewOrderAndRebalanceIfNeeded(prevTask, nextTask);
-        }
 
         if (prevTask !== null && nextTask !== null) {
             // вставка между

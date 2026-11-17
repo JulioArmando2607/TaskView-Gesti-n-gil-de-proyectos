@@ -14,6 +14,7 @@ import {
 } from 'taskview-db-schemas';
 import { Database } from '../../modules/db';
 import { TasksRepository } from './TasksRepository';
+import { lockTaskTree } from './TaskTreeIntegrity';
 import type {
     TaskCopyExecuteArgs,
     TaskCopyResult,
@@ -27,11 +28,43 @@ import type {
 
 type Transaction = Parameters<Parameters<Database['dbDrizzle']['transaction']>[0]>[0];
 
+export class TaskMoveDomainError extends Error {
+    constructor(readonly reason: 'hierarchy_conflict' | 'scrum_relationship') {
+        super(reason);
+        this.name = 'TaskMoveDomainError';
+    }
+}
+
 export class TaskMoveRepository {
     private readonly db: Database;
 
     constructor() {
         this.db = Database.getInstance();
+    }
+
+    async getScrumMoveConflict(taskIds: number[], mode: 'move' | 'copy'): Promise<boolean> {
+        if (!taskIds.length) return false;
+        const [epicLink] = await this.db.dbDrizzle.select({ id: TasksSchema.id }).from(TasksSchema)
+            .where(and(inArray(TasksSchema.id, taskIds), isNotNull(TasksSchema.epicId))).limit(1);
+        if (epicLink) return true;
+        const [outgoing] = await this.db.dbDrizzle.select({ id: TasksSchema.id }).from(TasksSchema)
+            .where(and(inArray(TasksSchema.id, taskIds), isNotNull(TasksSchema.relatedTaskId), not(inArray(TasksSchema.relatedTaskId, taskIds)))).limit(1);
+        if (outgoing) return true;
+        if (mode === 'move') {
+            const [incoming] = await this.db.dbDrizzle.select({ id: TasksSchema.id }).from(TasksSchema)
+                .where(and(inArray(TasksSchema.relatedTaskId, taskIds), not(inArray(TasksSchema.id, taskIds)))).limit(1);
+            if (incoming) return true;
+        }
+        return false;
+    }
+
+    private async assertMoveSafe(tx: Transaction, plan: TaskMoveExecuteArgs['plan'], mode: 'move' | 'copy'): Promise<void> {
+        await lockTaskTree(tx);
+        if (plan.leftBehindSubtaskIds.length || await this.getScrumMoveConflict(plan.taskIds, mode)) {
+            throw new TaskMoveDomainError(plan.leftBehindSubtaskIds.length ? 'hierarchy_conflict' : 'scrum_relationship');
+        }
+        const children = await tx.select({ id: TasksSchema.id }).from(TasksSchema).where(inArray(TasksSchema.parentId, plan.taskIds));
+        if (children.some((child) => !plan.taskIds.includes(child.id))) throw new TaskMoveDomainError('hierarchy_conflict');
     }
 
     async fetchContext(args: TaskMoveContextArgs): Promise<TaskMoveContext | null> {
@@ -109,8 +142,13 @@ export class TaskMoveRepository {
         const ids = plan.taskIds;
 
         return this.db.dbDrizzle.transaction(async (tx) => {
+            await this.assertMoveSafe(tx, plan, 'move');
             const [locked] = await tx.select({ id: TasksSchema.id }).from(TasksSchema).where(eq(TasksSchema.id, plan.rootTaskId)).for('update');
             if (!locked) return null;
+
+            const internalRelations = await tx.select({ id: TasksSchema.id, relatedTaskId: TasksSchema.relatedTaskId })
+                .from(TasksSchema).where(and(inArray(TasksSchema.id, ids), isNotNull(TasksSchema.relatedTaskId)));
+            await tx.update(TasksSchema).set({ relatedTaskId: null }).where(and(inArray(TasksSchema.id, ids), isNotNull(TasksSchema.relatedTaskId)));
 
             await tx.delete(TasksToTagsSchema).where(inArray(TasksToTagsSchema.taskId, ids));
             await tx.delete(TasksAssigneeSchema).where(inArray(TasksAssigneeSchema.taskId, ids));
@@ -152,6 +190,10 @@ export class TaskMoveRepository {
                 order -= TasksRepository.KANBAN_ORDER_GAP;
             }
 
+            for (const relation of internalRelations) {
+                if (relation.relatedTaskId !== null) await tx.update(TasksSchema).set({ relatedTaskId: relation.relatedTaskId }).where(eq(TasksSchema.id, relation.id));
+            }
+
             await tx
                 .update(GraphRelationsSchema)
                 .set({ goalId: plan.targetGoalId })
@@ -166,6 +208,7 @@ export class TaskMoveRepository {
         const { plan } = args;
 
         return this.db.dbDrizzle.transaction(async (tx) => {
+            await this.assertMoveSafe(tx, plan, 'copy');
             const originals = await tx.select().from(TasksSchema).where(inArray(TasksSchema.id, plan.taskIds));
             const byId = new Map(originals.map((t) => [t.id, t]));
             const newIds = new Map<number, number>();
@@ -185,6 +228,8 @@ export class TaskMoveRepository {
                         complete: source.complete,
                         note: source.note,
                         priorityId: source.priorityId,
+                        workItemType: source.workItemType,
+                        acceptanceCriteria: source.acceptanceCriteria,
                         startDate: source.startDate,
                         endDate: source.endDate,
                         startTime: source.startTime,
@@ -201,6 +246,14 @@ export class TaskMoveRepository {
                 order -= TasksRepository.KANBAN_ORDER_GAP;
                 newIds.set(id, copy.id);
                 created.push(copy);
+            }
+
+            for (const source of originals) {
+                if (source.relatedTaskId !== null) {
+                    const copiedTaskId = newIds.get(source.id);
+                    const copiedRelatedId = newIds.get(source.relatedTaskId);
+                    if (copiedTaskId && copiedRelatedId) await tx.update(TasksSchema).set({ relatedTaskId: copiedRelatedId }).where(eq(TasksSchema.id, copiedTaskId));
+                }
             }
 
             const edges = await tx

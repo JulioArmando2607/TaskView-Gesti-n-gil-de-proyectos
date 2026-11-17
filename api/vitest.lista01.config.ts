@@ -1,0 +1,53 @@
+import { defineConfig } from 'vitest/config';
+
+// Lista 01: only suites reviewed as independent of PostgreSQL and external services.
+// The deliberately unreachable endpoints guard against accidental network use.
+export default defineConfig({
+    test: {
+        include: [
+            'src/middlewares/__tests__/require-token-permission.test.ts',
+            'src/modules/__tests__/{log-level,process-timezone}.spec.ts',
+            'src/tv-modules/tasks/__tests__/TaskMovePlanner.spec.ts',
+            'src/tv-modules/tasks/__tests__/TasksMassAssignment.spec.ts',
+            'src/tv-modules/lists/__tests__/GoalListsMassAssignment.spec.ts',
+            'src/tv-modules/start/__tests__/{StartDashboardBuilder,StartDashboardTaskPicker}.spec.ts',
+            'src/tv-modules/automations/__tests__/{AutomationCycleDetector,AutomationModuleEvents,AutomationOptionRemovalHandler}.spec.ts',
+            'src/tv-modules/files/__tests__/{HashingStream,FileDownloadTokens}.spec.ts',
+            'src/tv-modules/files/__tests__/{LocalFileStorage,FileStorageMigrator,FileStorageFactory,FileStorageConfigReader}.spec.ts',
+            'src/tv-modules/oauth/__tests__/oauth.utils.test.ts',
+            'src/tv-modules/oauth/__tests__/OAuthManager.test.ts',
+            'src/tv-modules/auth/__tests__/AccountDeletion.test.ts',
+            'src/tv-modules/invoices/__tests__/InvoicePdfRenderer.spec.ts',
+            'src/tv-modules/integrations/__tests__/{providers,IntegrationsManager}.test.ts',
+            'src/tv-modules/automations/__tests__/AutomationEngine.spec.ts',
+            'src/tv-modules/realtime/__tests__/{RealtimeDispatcher,GoalMemberBroadcasts}.spec.ts',
+            'src/tv-modules/sso/__tests__/sso.utils.test.ts',
+            'src/tv-modules/sso/__tests__/sso.fetch-url.test.ts',
+            'src/core/__tests__/CentrifugoClient.spec.ts',
+            'src/tv-modules/collaboration/__tests__/InviteEmailDispatcher.spec.ts',
+            'src/tv-modules/import/__tests__/{TrelloProvider,TodoistProvider}.spec.ts',
+            'src/tv-modules/import/__tests__/JiraProviders.spec.ts',
+            'src/tv-modules/webhooks/__tests__/WebhooksSsrf.spec.ts',
+            'src/tv-modules/import/__tests__/{JiraCloudAdf,JiraCloudMapper,JiraDcMapper,JiraDcWikiMarkup,TrelloMapper,TodoistMapper}.spec.ts',
+        ],
+        testTimeout: 5000,
+        env: {
+            NODE_ENV: 'test',
+            DB_HOST: '127.0.0.1',
+            DB_PORT: '1',
+            DB_NAME: 'taskview_l01_unreachable',
+            DB_USER: 'taskview_l01_test',
+            DB_PASSWORD: 'synthetic-unreachable',
+            APP_PORT: '0',
+            APP_URL: 'http://127.0.0.1:1',
+            JWT_SIGN: 'lista01-synthetic-signing-key-only',
+            ACCESS_LIFE_TIME: '5m',
+            REFRESH_LIFE_TIME: '5m',
+            JWT_ALG: 'HS256',
+            ENCRYPTION_KEY: 'ab'.repeat(32),
+            FILE_STORAGE_PROVIDER: 'local',
+            FILE_STORAGE_LOCAL_DIR: './.test-data/lista01-files',
+            FILE_MAX_SIZE_MB: '1',
+        },
+    },
+});

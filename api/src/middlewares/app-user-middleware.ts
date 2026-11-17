@@ -53,8 +53,8 @@ export const appUserMiddleware = async (req: Request, res: Response, next: NextF
                 if (userData.status === 'fulfilled' && userData.value) {
                     req.appUser.setUserDataFromDb(userData.value);
                 }
-            } catch (error: any) {
-                $logger.error(error);
+            } catch {
+                $logger.error({ operation: 'resolveSessionUser' }, 'Authentication middleware failed');
             }
         } else {
             req.appUser = new AppUser();

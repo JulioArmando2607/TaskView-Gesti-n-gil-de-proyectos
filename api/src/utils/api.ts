@@ -5,5 +5,5 @@ export function toResponse<T>(data: T) {
 }
 
 export function logError(err: any) {
-    $logger.error('Error', { errorStack: err.stack, errorMessage: err.message });
+    $logger.error({ errorStack: err.stack, errorMessage: err.message }, 'Error');
 }

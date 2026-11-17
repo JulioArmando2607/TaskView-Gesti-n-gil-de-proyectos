@@ -228,9 +228,9 @@ export default class AuthController {
         $logger.info(`[AuthController:sendLoginCode] sending code by email to`);
         this.sendCodeByEmail(code.split(':')[0], email)
             .then((ok) => {
-                if (!ok) $logger.error({ email }, 'Failed to send login code email');
+                if (!ok) $logger.error({ operation: 'sendLoginCode' }, 'Auth email delivery failed');
             })
-            .catch((err) => $logger.error({ err, email }, 'Failed to send login code email'));
+            .catch(() => $logger.error({ operation: 'sendLoginCode' }, 'Auth email delivery failed'));
         return res.status(200).end();
     };
 
@@ -321,8 +321,8 @@ export default class AuthController {
                     `taskview://login?tokens=${encodedAuthData}`
                 );
             }
-        } catch (error) {
-            $logger.info(`Can not parse platform data from state: ${req.query.state}`);
+        } catch {
+            $logger.info({ operation: 'loginByProvider' }, 'Platform state could not be parsed');
         }
 
         return res.redirect(`${process.env.APP_URL}/login?tokens=${encodedAuthData}`);
@@ -636,9 +636,9 @@ export default class AuthController {
             attachment: [{ data: remindPasswordBody, alternative: true }],
         })
             .then((ok) => {
-                if (!ok) $logger.error({ to: userData.email }, 'Failed to send remind password email');
+                if (!ok) $logger.error({ operation: 'remindPassword' }, 'Auth email delivery failed');
             })
-            .catch((err) => $logger.error({ err, to: userData.email }, 'Failed to send remind password email'));
+            .catch(() => $logger.error({ operation: 'remindPassword' }, 'Auth email delivery failed'));
 
         return respond();
     };
@@ -816,9 +816,9 @@ export default class AuthController {
             from: process.env.SMTP_FROM_EMAIL as string,
         })
             .then((ok) => {
-                if (!ok) $logger.error({ to: userEmail }, 'Failed to send password change code email');
+                if (!ok) $logger.error({ operation: 'changePassword' }, 'Auth email delivery failed');
             })
-            .catch((err) => $logger.error({ err, to: userEmail }, 'Failed to send password change code email'));
+            .catch(() => $logger.error({ operation: 'changePassword' }, 'Auth email delivery failed'));
 
         return res.status(200).end();
     };

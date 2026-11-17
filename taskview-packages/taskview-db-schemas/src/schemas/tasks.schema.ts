@@ -29,6 +29,12 @@ export const TasksSchema = pgSchema('tasks').table('tasks', {
     dateComplete: timestamp('date_complete'),
     recurrenceRuleId: integer('recurrence_rule_id'),
     recurrenceInstanceDate: date('recurrence_instance_date'),
+    /** Existing rows remain independent tasks; Scrum kinds are opt-in. */
+    workItemType: varchar('work_item_type', { length: 16 }).$type<'task' | 'story' | 'bug'>().notNull().default('task'),
+    epicId: integer('epic_id'),
+    acceptanceCriteria: varchar('acceptance_criteria'),
+    relatedTaskId: integer('related_task_id'),
+    issueKey: varchar('issue_key', { length: 40 }).notNull().default(''),
 });
 
 export type TasksSchemaTypeForSelect = typeof TasksSchema.$inferSelect;

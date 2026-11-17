@@ -24,6 +24,15 @@ export const CanToggleRolesCollaboration = async (req: Request, res: Response, n
         return res.status(500).end();
     }
 
+    // A project manager may administer other members, but cannot use the
+    // collaboration endpoint to grant themselves a different role set. The
+    // project owner remains the only actor allowed to change their own roles.
+    const actorId = req.appUser.getUserData()?.id;
+    const goal = await req.appUser.goalsManager.goalsRepository.fetchGoalById(Number(goalId));
+    if (actorId && Number(output.userId) === Number(actorId) && goal !== false && goal?.owner !== actorId) {
+        return res.status(403).send('Self role escalation is not allowed');
+    }
+
     if (permissions.hasPermissions(GoalPermissions.GOAL_CAN_MANAGE_USERS)) {
         const userExistInGoal = await req.appUser.collaborationManager.repository.userExistInGoal(
             output.userId,

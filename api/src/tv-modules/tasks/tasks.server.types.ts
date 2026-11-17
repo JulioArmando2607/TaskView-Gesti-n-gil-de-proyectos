@@ -249,6 +249,7 @@ export type TaskForClientNew = TasksSchemaTypeForSelect & {
     historyId: number | null;
     subtasks: TaskForClientNew[];
     filesCount: number;
+    qaStatus?: 'pending' | 'observed' | 'approved' | null;
 };
 
 export const TaskArkTypeDelete = type({
@@ -281,7 +282,7 @@ export type TaskArgRestoreTaskHistory = typeof TaskArkTypeRestoreTaskHistory.inf
 
 export type TaskUpdateResult =
     | { ok: true; task: TaskForClientNew; syncFailed?: boolean }
-    | { ok: false; reason: 'not_found' | 'foreign_reference' };
+    | { ok: false; reason: 'not_found' | 'foreign_reference' | 'hierarchy_conflict' | 'definition_of_done'; details?: string[] };
 
 // Columns that point into the task's project; a history snapshot from another project must not restore them
 export const TASK_PROJECT_BOUND_COLUMNS = [

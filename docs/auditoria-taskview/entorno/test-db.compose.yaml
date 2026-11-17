@@ -1,0 +1,95 @@
+# Lista 01 PostgreSQL scratch overlay. Combine only with compose.yaml, explicit project.
+services:
+  test-db:
+    image: postgres:17@sha256:846a7ddaa67a4b354ae1d21087b683901aa6113a4ed626d3787cfbf6c85e3e07
+    pull_policy: never
+    profiles: [test-db]
+    environment:
+      POSTGRES_DB: taskview_l01_scratch_20261114
+      POSTGRES_USER: taskview_l01_scratch
+      POSTGRES_PASSWORD: ${L01_TEST_DB_PASSWORD:?Generate a unique synthetic scratch password}
+    ports:
+      - "127.0.0.1:25432:5432"
+    volumes:
+      - test_db_data:/var/lib/postgresql/data
+    networks:
+      - test_db_net
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskview_l01_scratch -d taskview_l01_scratch_20261114"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  test-migration:
+    image: taskview-l01-migration:b5a7e65
+    pull_policy: never
+    profiles: [test-db]
+    environment:
+      DB_HOST: test-db
+      DB_PORT: "5432"
+      DB_NAME: taskview_l01_scratch_20261114
+      DB_USER: taskview_l01_scratch
+      DB_PASSWORD: ${L01_TEST_DB_PASSWORD:?Generate a unique synthetic scratch password}
+    networks:
+      - test_db_net
+    depends_on:
+      test-db:
+        condition: service_healthy
+    restart: "no"
+
+  test-api:
+    image: taskview-l01-api:b5a7e65
+    pull_policy: never
+    profiles: [test-db]
+    environment:
+      DB_HOST: test-db
+      DB_PORT: "5432"
+      DB_NAME: taskview_l01_scratch_20261114
+      DB_USER: taskview_l01_scratch
+      DB_PASSWORD: ${L01_TEST_DB_PASSWORD:?Generate a unique synthetic scratch password}
+      NODE_ENV: test
+      TZ: UTC
+      APP_PORT: "1401"
+      APP_URL: http://localhost:21401
+      API_PUBLIC_URL: http://localhost:21401
+      JWT_ALG: HS256
+      JWT_SIGN: ${L01_TEST_JWT_SIGN:?Generate a unique synthetic signing key}
+      ENCRYPTION_KEY: ${L01_TEST_ENCRYPTION_KEY:?Generate a unique synthetic encryption key}
+      ACCESS_LIFE_TIME: 15m
+      REFRESH_LIFE_TIME: 3s
+      AUTH_LOGIN_METHODS: password
+      PASSWORD_CHANGE_CONFIRMATION: password
+      INVITE_EMAIL_ENABLED: "false"
+      SSO_TRUSTED_DOMAINS: scim-e2e.example,scim-e2e-other.example,scim-groups.example
+      WEBHOOKS_ALLOW_PRIVATE_URLS: "true"
+      CORS_REMOVE_DEFAULT_ALLOWED_ORIGINS: "true"
+      CORS_ALLOWED_ORIGINS: http://localhost:21401
+      FILE_STORAGE_PROVIDER: local
+      FILE_STORAGE_LOCAL_DIR: /usr/src/app/data/files
+    ports:
+      - "127.0.0.1:21401:1401"
+    volumes:
+      - test_files:/usr/src/app/data/files
+      - test_logs:/usr/src/app/logs
+    networks:
+      - test_db_net
+    depends_on:
+      test-db:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  test_db_data:
+    name: taskview-l01-b5a7e65_test_20261114_pgdata
+  test_files:
+    name: taskview-l01-b5a7e65_test_20261114_files
+  test_logs:
+    name: taskview-l01-b5a7e65_test_20261114_logs
+
+networks:
+  test_db_net:
+    name: taskview-l01-b5a7e65_test_20261114_net
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"

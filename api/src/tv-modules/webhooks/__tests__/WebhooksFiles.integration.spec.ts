@@ -58,8 +58,10 @@ describe('Webhooks: file events', () => {
         const client = await Database.getInstance().getClient();
         await client.query('SELECT pg_advisory_lock(1401067)');
         try {
-            for (const file of (await fs.readdir(FILES_MIGRATION_DIR)).sort()) {
-                await client.query(await fs.readFile(join(FILES_MIGRATION_DIR, file), 'utf-8'));
+            if (process.env.L01_TEST_DB_ONLY !== '1') {
+                for (const file of (await fs.readdir(FILES_MIGRATION_DIR)).sort()) {
+                    await client.query(await fs.readFile(join(FILES_MIGRATION_DIR, file), 'utf-8'));
+                }
             }
         } finally {
             await client.query('SELECT pg_advisory_unlock(1401067)');

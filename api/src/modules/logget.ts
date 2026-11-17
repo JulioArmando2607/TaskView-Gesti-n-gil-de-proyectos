@@ -2,6 +2,7 @@ import path from 'path';
 import pino from 'pino';
 import { createStream } from 'rotating-file-stream';
 import { LOG_LEVELS, resolveLogLevel } from './log-level';
+import { AUTH_LOG_REDACTION } from './log-redaction';
 
 const generator = () => {
     const date = new Date();
@@ -18,7 +19,10 @@ const logStream = createStream(generator, {
 
 const { level, invalidValue } = resolveLogLevel(process.env);
 
-export const $logger = pino({ level }, logStream);
+export const $logger = pino({
+    level,
+    redact: AUTH_LOG_REDACTION,
+}, logStream);
 
 if (invalidValue !== null) {
     const message = `[logger] LOG_LEVEL="${invalidValue}" is not supported (${LOG_LEVELS.join(', ')}) - using ${level}`;

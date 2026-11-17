@@ -1,0 +1,8 @@
+# Lista 06: Kanban profesional sobre el laboratorio L04 aislado.
+services:
+  api:
+    image: taskview-l06-api:20261116
+    pull_policy: never
+  web:
+    image: taskview-l06-web:20261116
+    pull_policy: never

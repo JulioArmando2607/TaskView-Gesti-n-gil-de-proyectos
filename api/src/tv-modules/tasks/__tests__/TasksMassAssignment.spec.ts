@@ -17,7 +17,18 @@ function mockUpdateChain(returningRow: object = {}) {
     // where() is awaited directly by the task lookup and .limit()-ed by the list lookup
     const whereResult = Object.assign(Promise.resolve([returningRow]), { limit: async () => [returningRow] });
     const select = vi.fn(() => ({ from: () => ({ where: () => whereResult }) }));
-    vi.mocked(Database.getInstance).mockReturnValue({ dbDrizzle: { update, select } } as any);
+    const txSelect = vi.fn(() => {
+        const result = Object.assign(Promise.resolve([{ goalId: 2, statusId: 5, parentId: null }]), {
+            for: async () => [{ goalId: 2, statusId: 5, parentId: null }],
+        });
+        return { from: () => ({ where: () => result }) };
+    });
+    const transaction = vi.fn(async (callback: (tx: any) => Promise<unknown>) => callback({
+        execute: async () => ({ rows: [] }),
+        select: txSelect,
+        update,
+    }));
+    vi.mocked(Database.getInstance).mockReturnValue({ dbDrizzle: { update, select, transaction } } as any);
     return { set, update, select };
 }
 
@@ -118,9 +129,9 @@ describe('TasksRepository.updateTask mass-assignment guard', () => {
         const { set } = mockUpdateChain();
         const repository = new TasksRepository();
 
-        await repository.updateTask({ id: 1, kanbanOrder: 42, statusId: 7 });
+        await repository.updateTask({ id: 1, kanbanOrder: 42, statusId: 5 });
 
-        expect(set.mock.calls[0][0]).toEqual({ kanbanOrder: 42, statusId: 7 });
+        expect(set.mock.calls[0][0]).toEqual({ kanbanOrder: 42, statusId: 5 });
     });
 
     it('allowlist covers every field the update schema declares, and nothing else', () => {

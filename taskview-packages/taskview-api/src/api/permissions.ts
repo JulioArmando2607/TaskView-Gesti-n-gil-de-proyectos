@@ -28,6 +28,8 @@ export const TvPermissions: Record<Uppercase<keyof GoalPermissions>, keyof GoalP
      * Can edit task list
      */
     COMPONENT_CAN_EDIT: 'component_can_edit',
+    /** Legacy global edit grant still returned by the API for compatibility. */
+    COMPONENT_CAN_EDIT_ALL_TASKS: 'component_can_edit_all_tasks',
     /**
      * Can watch task lists content (tasks)
      * TODO rename to COMPONENT_CAN_WATCH_TASKS
@@ -202,6 +204,7 @@ export type GoalPermissions = {
 
     component_can_delete?: true;
     component_can_edit?: true;
+    component_can_edit_all_tasks?: true;
     component_can_watch_content?: true;
     component_can_add_tasks?: true;
     // component_can_edit_all_tasks?: true;

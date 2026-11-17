@@ -28,6 +28,7 @@
             :roles="roles"
             :goal-id="projectId"
             :loading="loading"
+            :creating-template="creatingRoleTemplate"
             @invite="handleInvite"
             @update-roles="handleUpdateMemberRoles"
             @remove="handleRemoveMember"
@@ -42,6 +43,7 @@
             :goal-id="projectId"
             :loading="loading"
             @create="handleCreateRole"
+            @create-template="handleCreateRoleTemplate"
             @toggle-permission="handleTogglePermission"
             @delete="handleDeleteRole"
           />
@@ -75,6 +77,7 @@ const { permissions } = storeToRefs(permissionsStore)
 
 const activeTab = ref('members')
 const loading = ref(false)
+const creatingRoleTemplate = ref<string | null>(null)
 
 const hasGoalSelected = computed(() => projectId.value > 0)
 
@@ -140,6 +143,29 @@ async function handleCreateRole(roleName: string) {
     goalId: projectId.value,
     roleName,
   })
+}
+
+async function handleCreateRoleTemplate(template: { name: string; permissionNames: string[] }) {
+  if (creatingRoleTemplate.value) return
+  creatingRoleTemplate.value = template.name
+  try {
+    const role = await rolesStore.addCollaborationRole({
+      goalId: projectId.value,
+      roleName: template.name,
+    })
+    if (!role) return
+
+    const permissionsByName = new Map(permissions.value.map(permission => [permission.name, permission.id]))
+    const permissionIds = [...new Set(template.permissionNames)]
+      .map(name => permissionsByName.get(name))
+      .filter((id): id is number => id !== undefined)
+
+    for (const permissionId of permissionIds) {
+      await rolesStore.togglePermissionForRole({ roleId: role.id, permissionId })
+    }
+  } finally {
+    creatingRoleTemplate.value = null
+  }
 }
 
 async function handleTogglePermission(data: { roleId: number; permissionId: number }) {

@@ -6,7 +6,7 @@ import type {
   GoalItem,
 } from 'taskview-api'
 import { $tvApi } from '@/plugins/axios'
-import type { CollaborationRolesStore } from '@/types/collaboration-roles.types'
+import type { CollaborationRole, CollaborationRolesStore } from '@/types/collaboration-roles.types'
 
 export const useCollaborationRolesStore = defineStore('collaborationRoles', {
   state(): CollaborationRolesStore {
@@ -23,15 +23,16 @@ export const useCollaborationRolesStore = defineStore('collaborationRoles', {
       this.roles = roles
     },
 
-    async addCollaborationRole(data: CollaborationArgCreateRoleForGoal): Promise<void> {
+    async addCollaborationRole(data: CollaborationArgCreateRoleForGoal): Promise<CollaborationRole | null> {
       const role = await $tvApi.collaboration.createRoleForGoal(data)
-      if (!role) return
+      if (!role) return null
 
       this.roles.push(role)
 
       if (!this.rolesPermissions[role.id]) {
         this.rolesPermissions[role.id] = {}
       }
+      return role
     },
 
     async deleteCollaborationRole(data: CollaborationArgDeleteRoleFromGoal): Promise<void> {

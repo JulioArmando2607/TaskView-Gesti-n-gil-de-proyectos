@@ -1,0 +1,11 @@
+# Lista 05: overlays de QA y Sprint Review sobre el laboratorio L04 aislado.
+services:
+  migration:
+    image: taskview-l05-migration:20261116
+    pull_policy: never
+  api:
+    image: taskview-l05-api:20261116
+    pull_policy: never
+  web:
+    image: taskview-l05-web:20261116
+    pull_policy: never

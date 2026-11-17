@@ -54,6 +54,7 @@ const api = {
       (response) => response,
       async (error) => {
         const originalRequest = error.config
+        if (!originalRequest) return Promise.reject(error)
         const isRefreshRequest = originalRequest.url?.includes('/auth/refresh/token')
         if (isRefreshRequest) {
           $ls.invalidateTokens()
@@ -61,7 +62,7 @@ const api = {
           return Promise.reject(error)
         }
 
-        if (error.response.status === 401 && !originalRequest._retry) {
+        if (error.response?.status === 401 && !originalRequest._retry) {
           console.debug('We have 401')
 
           if (isRefreshing) {
@@ -70,7 +71,6 @@ const api = {
               failedQueue.push({ resolve, reject })
             })
               .then((token) => {
-                console.debug('We got new token', token)
                 originalRequest.headers.Authorization = `Bearer ${token}`
                 return $axios(originalRequest)
               })
@@ -81,7 +81,6 @@ const api = {
           originalRequest._retry = true
           isRefreshing = true
           const refreshToken = await $ls.getRefreshToken()
-          console.log('We get refresh token')
           if (refreshToken) {
             return new Promise((resolve, reject) => {
               $axios
@@ -93,7 +92,6 @@ const api = {
                   qs.stringify({ refreshToken }),
                 )
                 .then((data) => {
-                  console.log('We got refresh data tokens', data)
                   $ls.setToken(data.data.access)
                   if (data.data.refresh) $ls.setRefreshToken(data.data.refresh)
                   $ls.checkTokenAndSetForAxios()

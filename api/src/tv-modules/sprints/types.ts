@@ -51,6 +51,20 @@ export const SprintArkTypeSaveRetro = type({
     'actionItems?': 'string | null',
 });
 
+export const SprintArkTypeSaveRetroAction = type({
+    sprintId: 'number',
+    description: 'string > 0',
+    'owner?': 'number | null',
+    'status?': "'planned' | 'in_progress' | 'done'",
+});
+
+export const SprintArkTypeUpdateRetroAction = type({
+    actionId: 'number',
+    'description?': 'string > 0',
+    'owner?': 'number | null',
+    'status?': "'planned' | 'in_progress' | 'done'",
+});
+
 export const SprintArkTypeSetTask = type({
     taskId: 'number',
     sprintId: 'number | null',
@@ -90,6 +104,8 @@ export type SprintCreateArgs = typeof SprintArkTypeCreate.infer;
 export type SprintUpdateArgs = typeof SprintArkTypeUpdate.infer;
 export type SprintCloseArgs = typeof SprintArkTypeClose.infer;
 export type SprintSaveRetroArgs = typeof SprintArkTypeSaveRetro.infer;
+export type SprintSaveRetroActionArgs = typeof SprintArkTypeSaveRetroAction.infer;
+export type SprintUpdateRetroActionArgs = typeof SprintArkTypeUpdateRetroAction.infer;
 export type SprintSetTaskArgs = typeof SprintArkTypeSetTask.infer;
 export type SprintPlanningQueryArgs = typeof SprintArkTypePlanningQuery.infer;
 export type SprintSetCadenceArgs = typeof SprintArkTypeSetCadence.infer;

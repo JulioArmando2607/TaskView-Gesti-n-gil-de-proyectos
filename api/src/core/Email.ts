@@ -19,8 +19,8 @@ export class Email {
 
             await client.sendAsync(data);
             return true;
-        } catch (error: any) {
-            $logger.error({ errorMessage: error.message, errorStack: error.stack }, 'Can not send email');
+        } catch {
+            $logger.error({ operation: 'sendEmail' }, 'Email delivery failed');
             return false;
         }
     }

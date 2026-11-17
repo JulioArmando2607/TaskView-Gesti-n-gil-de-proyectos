@@ -9,6 +9,8 @@ import {
     SprintArkTypeListQuery,
     SprintArkTypePlanningQuery,
     SprintArkTypeSaveRetro,
+    SprintArkTypeSaveRetroAction,
+    SprintArkTypeUpdateRetroAction,
     SprintArkTypeSetCadence,
     SprintArkTypeSetTask,
     SprintArkTypeSprintIdParam,
@@ -103,6 +105,24 @@ export default class SprintsController {
         const data = SprintArkTypeSaveRetro({ ...req.body, sprintId: Number(req.params.sprintId) });
         if (data instanceof type.errors) return res.status(400).send(data.summary);
         return this.sendResult(res, await req.appUser.sprintsManager.saveRetro(data));
+    };
+
+    listRetroActions = async (req: Request, res: Response) => {
+        const data = SprintArkTypeSprintIdParam(req.params);
+        if (data instanceof type.errors) return res.status(400).send(data.summary);
+        return res.tvJson(await req.appUser.sprintsManager.listRetroActions(data.sprintId));
+    };
+
+    createRetroAction = async (req: Request, res: Response) => {
+        const data = SprintArkTypeSaveRetroAction({ ...req.body, sprintId: Number(req.params.sprintId) });
+        if (data instanceof type.errors) return res.status(400).send(data.summary);
+        return this.sendResult(res, await req.appUser.sprintsManager.createRetroAction(data));
+    };
+
+    updateRetroAction = async (req: Request, res: Response) => {
+        const data = SprintArkTypeUpdateRetroAction({ ...req.body, actionId: Number(req.params.actionId) });
+        if (data instanceof type.errors) return res.status(400).send(data.summary);
+        return this.sendResult(res, await req.appUser.sprintsManager.updateRetroAction({ ...data, sprintId: Number(req.params.sprintId) }));
     };
 
     setTaskSprint = async (req: Request, res: Response) => {

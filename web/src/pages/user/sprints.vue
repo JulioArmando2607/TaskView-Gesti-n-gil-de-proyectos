@@ -222,6 +222,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useDateFormat } from '@vueuse/core'
+import { dateOnlyToLocalDate } from '@/helpers/dateOnly'
 import type { Sprint } from 'taskview-api'
 import TvCollapseSidebarDesktop from '@/components/features/base/TvCollapseSidebarDesktop.vue'
 import SprintHeader from '@/components/features/sprints/parts/SprintHeader.vue'
@@ -324,8 +325,8 @@ const activeSprintMenu = computed(() => {
 })
 
 function formatRange(sprint: Sprint): string {
-  const start = useDateFormat(new Date(sprint.startDate), 'DD MMM').value
-  const end = useDateFormat(new Date(sprint.endDate), 'DD MMM YYYY').value
+  const start = useDateFormat(dateOnlyToLocalDate(sprint.startDate), 'DD MMM').value
+  const end = useDateFormat(dateOnlyToLocalDate(sprint.endDate), 'DD MMM YYYY').value
   return `${start} – ${end}`
 }
 

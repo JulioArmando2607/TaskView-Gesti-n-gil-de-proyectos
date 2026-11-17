@@ -23,7 +23,10 @@
         @click="emit('assign', task)"
       >
         <template v-if="direction === 'forward'">
-          <span class="truncate text-sm">{{ task.description }}</span>
+          <span class="flex min-w-0 items-center gap-2 truncate text-sm">
+            <span v-if="task.parentId" class="shrink-0 rounded bg-elevated px-1.5 py-0.5 text-[10px] text-muted">{{ t('sprints.planning.subtask') }}</span>
+            <span class="truncate">{{ task.description }}</span>
+          </span>
           <span class="flex shrink-0 items-center gap-1 text-xs text-dimmed">
             {{ formatPoints(toNumber(task.estimateValue)) }} {{ unitLabel(unit, true) }}
             <UIcon name="i-lucide-arrow-right" />
@@ -34,7 +37,10 @@
             <UIcon name="i-lucide-arrow-left" />
             {{ formatPoints(toNumber(task.estimateValue)) }} {{ unitLabel(unit, true) }}
           </span>
-          <span class="truncate text-sm">{{ task.description }}</span>
+          <span class="flex min-w-0 items-center gap-2 truncate text-sm">
+            <span v-if="task.parentId" class="shrink-0 rounded bg-elevated px-1.5 py-0.5 text-[10px] text-muted">{{ t('sprints.planning.subtask') }}</span>
+            <span class="truncate">{{ task.description }}</span>
+          </span>
         </template>
       </button>
 

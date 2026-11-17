@@ -26,25 +26,26 @@ import type {
 } from '../../types/tasks.types';
 import { TaskItemForClient } from './TaskItemForClient';
 import { TaskMovePlanner } from './TaskMovePlanner';
-import { TaskMoveRepository } from './TaskMoveRepository';
+import { TaskMoveDomainError, TaskMoveRepository } from './TaskMoveRepository';
 import { TasksRepository } from './TasksRepository';
 import type { TaskArgMove, TaskMoveOutcome, TaskMovePreviewDto } from './task-move.types';
 import { FilesRepository } from '../files/FilesRepository';
-import {
-    type TaskAddResult,
-    type TaskArgAdd,
-    type TaskArgDelete,
-    type TaskArgFetchTaskByIdNew,
-    type TaskArgFetchTaskHistory,
-    type TaskArgFetchTasksNew,
-    type TaskArgRestoreTaskHistory,
-    type TaskArgUpdate,
-    type TaskForClientNew,
-    type TaskUpdateResult,
-    type TasksArgToggleTaskUsers,
+import type {
+    TaskAddResult,
+    TaskArgAdd,
+    TaskArgDelete,
+    TaskArgFetchTaskByIdNew,
+    TaskArgFetchTaskHistory,
+    TaskArgFetchTasksNew,
+    TaskArgRestoreTaskHistory,
+    TaskArgUpdate,
+    TaskForClientNew,
+    TaskUpdateResult,
+    TasksArgToggleTaskUsers,
 } from './tasks.server.types';
 import type { KanbanArgFetchTasksForColumn, KanbanArgFilters } from '../kanban/types';
 import { hideUnwatchableTaskFields } from './task-field-visibility';
+import { TaskTreeIntegrityError } from './TaskTreeIntegrity';
 
 export class TasksManager {
     public readonly repository: TasksRepository;
@@ -270,6 +271,11 @@ export class TasksManager {
         const currentTask = await this.repository.fetchTaskByIdNew(data.id);
         if (!currentTask) return { ok: false, reason: 'not_found' };
 
+        if (data.complete === true) {
+            const dod = await this.repository.validateDefinitionOfDone(data.id);
+            if (!dod.ok) return { ok: false, reason: 'definition_of_done', details: dod.details };
+        }
+
         const foreign = await this.repository.referencesOutsideGoal({
             taskId: data.id,
             goalId: currentTask.goalId,
@@ -283,8 +289,16 @@ export class TasksManager {
             data.kanbanOrder = await this.repository.getNextKanbanOrder(currentTask.goalId);
         }
 
-        const task = await this.repository.updateTask(data);
-        if (!task) return { ok: false, reason: 'not_found' };
+        let task;
+        try {
+            task = await this.repository.updateTask(data);
+        } catch (error) {
+            if (error instanceof TaskTreeIntegrityError || (error instanceof Error && error.name === 'TaskTreeIntegrityError')) return { ok: false, reason: 'hierarchy_conflict' };
+            throw error;
+        }
+        if (!task) return data.parentId !== undefined
+            ? { ok: false, reason: 'hierarchy_conflict' }
+            : { ok: false, reason: 'not_found' };
 
         let syncFailed = false;
         if (data.complete !== undefined) {
@@ -434,14 +448,8 @@ export class TasksManager {
         });
         if (foreign) return { ok: false, reason: 'foreign_reference' };
 
-        const newData = { ...data };
-
-        if (data.kanbanOrder === null || data.kanbanOrder === undefined) {
-            newData.kanbanOrder = await this.repository.getNextKanbanOrder(data.goalId, data.statusId ?? null);
-        }
-
         const task = await this.repository.addTaskNew({
-            data: newData,
+            data,
             creatorId: this.user.getUserData()?.id as number,
         });
         const result = await this.extendTasksWithTagsAndAssignees(task, true);
@@ -488,12 +496,16 @@ export class TasksManager {
         const repository = new TaskMoveRepository();
 
         if (plan.mode === 'copy') {
-            const copy = await repository.executeCopy({ plan, creatorId: initiatorId });
+            let copy: Awaited<ReturnType<TaskMoveRepository['executeCopy']>>;
+            try { copy = await repository.executeCopy({ plan, creatorId: initiatorId }); }
+            catch (error) { if (error instanceof TaskMoveDomainError) return { ok: false, reason: error.reason }; throw error; }
             for (const task of copy.tasks) eventBus.emit('task.created', { task, initiatorId });
             return { ok: true, data: { mode: 'copy', taskId: copy.rootTaskId, goalId: plan.targetGoalId } };
         }
 
-        const task = await repository.executeMove({ plan });
+        let task: Awaited<ReturnType<TaskMoveRepository['executeMove']>>;
+        try { task = await repository.executeMove({ plan }); }
+        catch (error) { if (error instanceof TaskMoveDomainError) return { ok: false, reason: error.reason }; throw error; }
         if (!task) return { ok: false, reason: 'not_found' };
         eventBus.emit('task.moved', { task, taskIds: plan.taskIds, fromGoalId: plan.sourceGoalId, toGoalId: plan.targetGoalId, initiatorId });
         return { ok: true, data: { mode: 'move', taskId: task.id, goalId: plan.targetGoalId } };

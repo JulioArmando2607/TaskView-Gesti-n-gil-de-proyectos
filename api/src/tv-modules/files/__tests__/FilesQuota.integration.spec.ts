@@ -96,9 +96,11 @@ describe('Files storage quotas', () => {
         // Integration specs run in parallel and re-apply migration SQL; an advisory lock keeps the DDL from racing.
         await client.query('SELECT pg_advisory_lock(1401067)');
         try {
-            for (const dir of MIGRATION_DIRS) {
-                for (const file of (await fs.readdir(dir)).sort()) {
-                    await client.query(await fs.readFile(join(dir, file), 'utf-8'));
+            if (process.env.L01_TEST_DB_ONLY !== '1') {
+                for (const dir of MIGRATION_DIRS) {
+                    for (const file of (await fs.readdir(dir)).sort()) {
+                        await client.query(await fs.readFile(join(dir, file), 'utf-8'));
+                    }
                 }
             }
         } finally {

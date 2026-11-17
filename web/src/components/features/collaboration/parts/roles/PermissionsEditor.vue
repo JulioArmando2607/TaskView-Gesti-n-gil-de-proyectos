@@ -52,7 +52,7 @@
             <p class="text-base ">
               {{ getLocalizedDescription(permission) }}
             </p>
-            <p class="text-xs text-muted">
+            <p v-if="locale !== 'es'" class="text-xs text-muted">
               {{ permission.name }}
             </p>
           </div>
@@ -67,6 +67,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { CollaborationPermission } from 'taskview-api'
 import { PermissionGroups, type PermissioinGroupsIds } from '@/types/collaboration-permissions.types'
+import { spanishPermissionDescriptions } from '@/utils/permission-descriptions.es'
 
 const props = defineProps<{
   permissions: CollaborationPermission[]
@@ -101,7 +102,10 @@ const permissionGroups = computed(() => {
 function getLocalizedDescription(permission: CollaborationPermission): string {
   try {
     const locales = JSON.parse(permission.descriptionLocales || '{}')
-    return locales[locale.value] || locales.en || permission.description
+    return locales[locale.value]
+      || (locale.value.startsWith('es') ? spanishPermissionDescriptions[permission.name] : undefined)
+      || locales.en
+      || permission.description
   } catch {
     return permission.description
   }
@@ -123,6 +127,9 @@ const filteredPermissionGroups = computed(() => {
 })
 
 function getGroupName(groupId: PermissioinGroupsIds): string {
+  if (locale.value.startsWith('es')) {
+    return ({ 1: 'Aplicación', 2: 'Proyecto', 3: 'Lista de tareas', 4: 'Tareas', 5: 'Sprints', 6: 'Organización', 7: 'Archivos', 8: 'Automatizaciones', 9: 'Webhooks' } as Record<PermissioinGroupsIds, string>)[groupId]
+  }
   const group = PermissionGroups[groupId]
   if (!group) return ''
   return group[locale.value as 'en' | 'ru'] || group.en

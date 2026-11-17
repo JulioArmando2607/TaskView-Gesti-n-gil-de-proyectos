@@ -101,6 +101,9 @@ export const KanbanArkTypeFilters = type({
     'listIds?': NumberArrayFromCommaSeparatedString,
     'assigneeIds?': NumberArrayFromCommaSeparatedString,
     'sprintId?': SprintFilterFromString,
+    'includeSubtasks?': type('string|undefined').pipe((value) => value === 'true'),
+    'workItemTypes?': type('string|undefined').pipe((v) => v ? v.split(',').filter((x): x is 'task' | 'story' | 'bug' => ['task', 'story', 'bug'].includes(x)) : []),
+    'priorityIds?': NumberArrayFromCommaSeparatedString,
 });
 
 export type KanbanArgFilters = typeof KanbanArkTypeFilters.infer;

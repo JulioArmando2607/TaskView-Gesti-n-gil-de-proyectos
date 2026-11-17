@@ -98,6 +98,19 @@ export default class TvSprintApi extends TvApiBase {
         );
     }
 
+    public async listRetroActions(sprintId: number) {
+        return this.request(this.$axios.get<AppResponse<import('./sprints.types').SprintRetroAction[]>>(`${this.moduleUrl}/sprint/${sprintId}/retro-actions`));
+    }
+
+    public async createRetroAction(args: import('./sprints.types').SprintSaveRetroActionArgs) {
+        const { sprintId, ...body } = args;
+        return this.request(this.$axios.post<AppResponse<import('./sprints.types').SprintRetroAction>>(`${this.moduleUrl}/sprint/${sprintId}/retro-actions`, body));
+    }
+
+    public async updateRetroAction(sprintId: number, actionId: number, body: Partial<import('./sprints.types').SprintSaveRetroActionArgs>) {
+        return this.request(this.$axios.patch<AppResponse<import('./sprints.types').SprintRetroAction>>(`${this.moduleUrl}/sprint/${sprintId}/retro-actions/${actionId}`, body));
+    }
+
     public async setTaskSprint(args: SprintSetTaskArgs) {
         return this.request(
             this.$axios.patch<AppResponse<{ taskId: number; sprintId: number | null }>>(

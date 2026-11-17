@@ -17,4 +17,14 @@ function readEnv(filePath: string) {
     );
 }
 
-export const DB_CREDENTIALS = readEnv(".env.for-test");
+// Lista 01 uses a separate scratch database. Keep the legacy file for the
+// original test stack, but never consult it in the guarded scratch run.
+export const DB_CREDENTIALS = process.env.L01_TEST_DB_ONLY === '1'
+    ? {
+        DB_HOST: '127.0.0.1',
+        DB_PORT: '25432',
+        DB_NAME: 'taskview_l01_scratch_20261114',
+        DB_USER: 'taskview_l01_scratch',
+        DB_PASSWORD: process.env.L01_TEST_DB_PASSWORD || '',
+    }
+    : readEnv(".env.for-test");

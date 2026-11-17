@@ -1,9 +1,33 @@
 import axios from 'axios';
 
-export const GITLAB_BASE_URL = process.env.GITLAB_BASE_URL || 'https://gitlab.com';
-const GITLAB_API_URL = process.env.GITLAB_API_URL || `${GITLAB_BASE_URL}/api/v4`;
+const configuredBaseUrl = process.env.GITLAB_BASE_URL || 'https://gitlab.com';
+const parsedBaseUrl = new URL(configuredBaseUrl);
+const allowedHosts = (process.env.GITLAB_ALLOWED_HOSTS || 'gitlab.com')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+
+if (
+    parsedBaseUrl.protocol !== 'https:' ||
+    parsedBaseUrl.username ||
+    parsedBaseUrl.password ||
+    parsedBaseUrl.pathname !== '/' ||
+    parsedBaseUrl.search ||
+    parsedBaseUrl.hash ||
+    !allowedHosts.includes(parsedBaseUrl.hostname.toLowerCase())
+) {
+    throw new Error('Invalid GitLab base URL: HTTPS and an explicitly allowed host are required');
+}
+
+export const GITLAB_BASE_URL = parsedBaseUrl.toString().replace(/\/$/, '');
+export const GITLAB_API_URL = process.env.GITLAB_API_URL || `${GITLAB_BASE_URL}/api/v4`;
+const parsedApiUrl = new URL(GITLAB_API_URL);
+if (parsedApiUrl.protocol !== 'https:' || parsedApiUrl.hostname.toLowerCase() !== parsedBaseUrl.hostname.toLowerCase()) {
+    throw new Error('Invalid GitLab API URL: it must use HTTPS and the configured GitLab host');
+}
 const GITLAB_OAUTH_URL = `${GITLAB_BASE_URL}/oauth/authorize`;
 const GITLAB_TOKEN_URL = `${GITLAB_BASE_URL}/oauth/token`;
+export const GITLAB_READ_ONLY = process.env.GITLAB_READ_ONLY === 'true';
 
 export type GitLabRepo = {
     id: number;
@@ -32,7 +56,7 @@ export function getGitLabOAuthUrl(state: string): string {
         client_id: clientId,
         redirect_uri: redirectUri,
         response_type: 'code',
-        scope: 'api',
+        scope: GITLAB_READ_ONLY ? 'read_api' : 'api',
         state,
     });
     return `${GITLAB_OAUTH_URL}?${params.toString()}`;
@@ -137,6 +161,7 @@ export async function createGitLabWebhook(
     webhookUrl: string,
     secret: string,
 ): Promise<{ id: number }> {
+    if (GITLAB_READ_ONLY) throw new Error('GitLab integration is configured as read-only');
     const res = await axios.post<{ id: number }>(
         `${GITLAB_API_URL}/projects/${projectId}/hooks`,
         {
@@ -163,6 +188,7 @@ export async function updateGitLabIssueState(
     issueIid: number,
     stateEvent: 'close' | 'reopen',
 ): Promise<void> {
+    if (GITLAB_READ_ONLY) throw new Error('GitLab integration is configured as read-only');
     await axios.put(
         `${GITLAB_API_URL}/projects/${projectId}/issues/${issueIid}`,
         { state_event: stateEvent },

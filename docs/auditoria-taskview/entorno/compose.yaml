@@ -1,0 +1,112 @@
+name: taskview-l01-b5a7e65
+
+x-db-environment: &db-environment
+  DB_HOST: db
+  DB_PORT: "5432"
+  DB_NAME: taskview_l01
+  DB_USER: taskview_l01
+  DB_PASSWORD: ${L01_DB_PASSWORD:?Genere un secreto local exclusivo}
+
+services:
+  db:
+    image: postgres@sha256:846a7ddaa67a4b354ae1d21087b683901aa6113a4ed626d3787cfbf6c85e3e07
+    pull_policy: never
+    environment:
+      POSTGRES_DB: taskview_l01
+      POSTGRES_USER: taskview_l01
+      POSTGRES_PASSWORD: ${L01_DB_PASSWORD:?Genere un secreto local exclusivo}
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskview_l01 -d taskview_l01"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Local-only sink for synthetic registration confirmation emails.
+  mailpit:
+    image: ghcr.io/axllent/mailpit:v1.33.1@sha256:c95e8356f55b65520e8b7fd4d74d3e2d06e4a83513f639e316b1e592fbd52646
+    environment:
+      MP_SMTP_BIND_ADDR: "0.0.0.0:25"
+      MP_UI_BIND_ADDR: "0.0.0.0:8025"
+      MP_SMTP_ALLOWED_RECIPIENTS: '@taskview-l01\.invalid$'
+    ports:
+      - "127.0.0.1:18025:8025"
+
+  migration:
+    profiles: ["maintenance"]
+    image: taskview-l01-migration:b5a7e65
+    pull_policy: never
+    build:
+      context: ../../../api/postgresql
+      dockerfile: dockerfile
+    environment: *db-environment
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    profiles: ["app"]
+    image: taskview-l01-api:b5a7e65
+    pull_policy: never
+    build:
+      context: ../../../api
+      dockerfile: dockerfile
+    environment:
+      <<: *db-environment
+      NODE_ENV: production
+      TZ: UTC
+      APP_PORT: "1401"
+      APP_URL: http://localhost:18888
+      API_PUBLIC_URL: http://localhost:11725
+      JWT_ALG: HS256
+      JWT_SIGN: ${L01_JWT_SIGN:?Genere un secreto local exclusivo}
+      ENCRYPTION_KEY: ${L01_ENCRYPTION_KEY:?Genere 32 bytes hexadecimales exclusivos}
+      ACCESS_LIFE_TIME: 15m
+      REFRESH_LIFE_TIME: 1d
+      AUTH_LOGIN_METHODS: password
+      PASSWORD_CHANGE_CONFIRMATION: password
+      SMTP_HOST: mailpit
+      SMTP_FROM_EMAIL: noreply@taskview-l01.invalid
+      INVITE_EMAIL_ENABLED: "false"
+      CORS_REMOVE_DEFAULT_ALLOWED_ORIGINS: "true"
+      CORS_ALLOWED_ORIGINS: http://localhost:18888,http://127.0.0.1:18888
+      FILE_STORAGE_PROVIDER: local
+      FILE_STORAGE_LOCAL_DIR: /usr/src/app/data/files
+    ports:
+      - "127.0.0.1:11725:1401"
+    volumes:
+      - files:/usr/src/app/data/files
+      - logs:/usr/src/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  web:
+    profiles: ["app"]
+    image: taskview-l01-web:b5a7e65
+    pull_policy: never
+    build:
+      context: ../../../web
+      dockerfile: dockerfile
+    environment:
+      TASKVIEW_API_URL: http://localhost:11725
+    ports:
+      - "127.0.0.1:18888:80"
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  files:
+  logs:
+
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"

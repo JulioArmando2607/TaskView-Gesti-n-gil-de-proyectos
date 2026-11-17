@@ -1,0 +1,11 @@
+# Lista 08: retrospectiva estructurada sobre L04 aislado.
+services:
+  migration:
+    image: taskview-l08-migration:20261116
+    pull_policy: never
+  api:
+    image: taskview-l08-api:20261116
+    pull_policy: never
+  web:
+    image: taskview-l08-web:20261116
+    pull_policy: never

@@ -1,0 +1,6 @@
+# Lista 01: overlay limited to the isolated laboratory web service.
+# Use together with compose.yaml and the private .env; never target the original project.
+services:
+  web:
+    image: taskview-l01-web:security-20261114
+    pull_policy: never

@@ -50,7 +50,7 @@ const goalsStore = useGoalsStore()
 const currentGoal = computed(() =>
   hasProject.value ? goalsStore.goalMap.get(projectId.value) ?? null : null,
 )
-const { canViewKanban, canViewGraph } = useGoalPermissionsFor(currentGoal)
+const { canViewKanban, canViewGraph, canViewTasks } = useGoalPermissionsFor(currentGoal)
 
 // A stable core (Home · Projects · … · Account) keeps tab positions predictable
 // across routes; project shortcuts (Kanban/Graph) only slot in when inside a
@@ -74,6 +74,9 @@ const navItems = computed<NavItem[]>(() => {
   ]
 
   if (hasProject.value) {
+    if (canViewTasks.value) {
+      items.push({ key: 'scrum', label: 'Scrum', icon: 'i-lucide-layers-3', to: { name: 'scrum', params: { projectId: projectId.value } }, active: () => route.name === 'scrum' })
+    }
     if (canViewKanban.value) {
       items.push({
         key: 'kanban',

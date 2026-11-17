@@ -190,7 +190,11 @@ export const useKanbanStore = defineStore('kanban', {
     },
 
     insertTask(task: TaskItem) {
-      if (this.goalId !== task.goalId || task.parentId || hasActiveFilters(this.filters)) return
+      if (
+        this.goalId !== task.goalId
+        || (task.parentId && !this.filters.includeSubtasks)
+        || hasActiveFilters({ ...this.filters, includeSubtasks: undefined })
+      ) return
       const column = this.tasksData[task.statusId ?? DEFAULT_ID]
       if (!column || this.hasTask(task.id)) return
       column.tasks.unshift(task)

@@ -5,6 +5,7 @@ import {
     SprintTaskOutcomesSchema,
     SprintUserCapacitySchema,
     SprintRetrosSchema,
+    SprintRetroActionsSchema,
     TasksSchema,
     type SprintCadenceSchemaTypeForSelect,
     type SprintStatus,
@@ -273,6 +274,27 @@ export class SprintsRepository {
         return result?.[0] ?? null;
     }
 
+    async getRetroActions(sprintId: number) {
+        const result = await callWithCatch(() => this.db.dbDrizzle.select().from(SprintRetroActionsSchema).where(eq(SprintRetroActionsSchema.sprintId, sprintId)).orderBy(asc(SprintRetroActionsSchema.id)));
+        return result ?? [];
+    }
+
+    async getRetroAction(id: number) {
+        const result = await callWithCatch(() => this.db.dbDrizzle.select().from(SprintRetroActionsSchema).where(eq(SprintRetroActionsSchema.id, id)).limit(1));
+        return result?.[0] ?? null;
+    }
+
+    async saveRetroAction(args: { sprintId: number; description: string; owner: number | null; status: 'planned' | 'in_progress' | 'done' }) {
+        const result = await callWithCatch(() => this.db.dbDrizzle.insert(SprintRetroActionsSchema).values(args).returning());
+        return result?.[0] ?? null;
+    }
+
+    async updateRetroAction(args: { id: number; description?: string; owner?: number | null; status?: 'planned' | 'in_progress' | 'done' }) {
+        const { id, ...changes } = args;
+        const result = await callWithCatch(() => this.db.dbDrizzle.update(SprintRetroActionsSchema).set({ ...changes, editedAt: new Date() }).where(eq(SprintRetroActionsSchema.id, id)).returning());
+        return result?.[0] ?? null;
+    }
+
     async saveRetro(args: SprintSaveRetroManagerArgs) {
         const set = {
             wentWell: args.wentWell ?? null,
@@ -412,7 +434,6 @@ export class SprintsRepository {
             eq(TasksSchema.goalId, args.goalId),
             isNull(TasksSchema.sprintId),
             or(eq(TasksSchema.complete, false), isNull(TasksSchema.complete)),
-            isNull(TasksSchema.parentId),
         ];
         if (args.cursor != null) {
             conditions.push(gt(TasksSchema.id, args.cursor));
@@ -433,7 +454,7 @@ export class SprintsRepository {
      * (completed included — they belong to the sprint). Cursor-paginated by ascending id.
      */
     async getSprintTasksForPlanning(args: SprintPlanningPageArgs): Promise<TasksSchemaTypeForSelect[]> {
-        const conditions = [eq(TasksSchema.sprintId, args.sprintId), isNull(TasksSchema.parentId)];
+        const conditions = [eq(TasksSchema.sprintId, args.sprintId)];
         if (args.cursor != null) {
             conditions.push(gt(TasksSchema.id, args.cursor));
         }
@@ -454,7 +475,7 @@ export class SprintsRepository {
             this.db.dbDrizzle
                 .select({ total: sql<string | null>`COALESCE(SUM(${TasksSchema.estimateValue}), 0)` })
                 .from(TasksSchema)
-                .where(and(eq(TasksSchema.sprintId, sprintId), isNull(TasksSchema.parentId)))
+                .where(eq(TasksSchema.sprintId, sprintId))
         );
         return result?.[0]?.total ? Number(result[0].total) : 0;
     }

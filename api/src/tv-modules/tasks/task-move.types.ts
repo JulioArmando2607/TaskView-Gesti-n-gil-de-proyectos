@@ -23,7 +23,10 @@ export type TaskMoveBlockReason =
     | 'same_project'
     | 'other_organization'
     | 'is_subtask'
-    | 'no_target_permission';
+    | 'no_target_permission'
+    // 409 domain conflicts; generic category names intentionally reveal no foreign project data.
+    | 'hierarchy_conflict'
+    | 'scrum_relationship';
 
 export type TaskMoveRemovals = {
     tags: number;

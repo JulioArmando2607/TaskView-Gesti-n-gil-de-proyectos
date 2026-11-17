@@ -24,6 +24,17 @@ export type SprintRetro = {
     wentWell: string | null;
     wentBad: string | null;
     actionItems: string | null;
+  actions?: SprintRetroAction[];
+};
+
+export type SprintRetroAction = {
+  id: number;
+  sprintId: number;
+  description: string;
+  owner: number | null;
+  status: 'planned' | 'in_progress' | 'done';
+  createdAt: string;
+  editedAt: string;
 };
 
 export type SprintWithRetro = Sprint & { retro: SprintRetro | null };
@@ -66,6 +77,8 @@ export type SprintSaveRetroArgs = {
     wentBad?: string | null;
     actionItems?: string | null;
 };
+
+export type SprintSaveRetroActionArgs = { sprintId: number; description: string; owner?: number | null; status?: SprintRetroAction['status'] };
 
 export type SprintSetTaskArgs = {
     taskId: number;

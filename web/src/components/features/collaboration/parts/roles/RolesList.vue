@@ -9,6 +9,24 @@
       @add="$emit('create', $event)"
     />
 
+    <section class="space-y-2">
+      <p class="text-sm text-muted">Plantillas de roles Scrum</p>
+      <div class="flex flex-wrap gap-2">
+        <UButton
+          v-for="template in roleTemplates"
+          :key="template.name"
+          :label="template.name"
+          :loading="creatingTemplate === template.name"
+          :disabled="!!creatingTemplate || loading"
+          color="neutral"
+          variant="outline"
+          size="sm"
+          @click="createTemplate(template)"
+        />
+      </div>
+      <p class="text-xs text-muted">Se crea el rol con permisos iniciales que puedes revisar y ajustar.</p>
+    </section>
+
     <div
       v-if="loading"
       class="flex items-center justify-center py-12"
@@ -100,15 +118,55 @@ const props = defineProps<{
   rolesPermissions: CollaborationRolesStore['rolesPermissions']
   goalId: number
   loading?: boolean
+  creatingTemplate?: string | null
 }>()
 
 const emit = defineEmits<{
   create: [name: string]
+  createTemplate: [template: { name: string; permissionNames: string[] }]
   togglePermission: [data: { roleId: number; permissionId: number }]
   delete: [roleId: number]
 }>()
 
 const { t } = useI18n()
+
+const roleTemplates = [
+  {
+    name: 'Scrum Master',
+    permissionNames: [
+      'goal_can_watch_content', 'goal_can_add_task_list', 'component_can_watch_content',
+      'component_can_add_tasks', 'component_can_add_subtasks', 'task_can_edit_description',
+      'task_can_edit_status', 'task_can_edit_note', 'task_can_edit_deadline',
+      'task_can_watch_details', 'task_can_watch_subtasks', 'task_can_add_subtasks',
+      'task_can_edit_tags', 'task_can_watch_tags', 'task_can_watch_priority',
+      'task_can_edit_priority', 'task_can_access_history', 'task_can_assign_users',
+      'task_can_watch_assigned_users', 'sprint_can_view', 'sprint_can_manage',
+      'sprint_can_assign_tasks', 'sprint_can_view_analytics', 'timetracking_can_view',
+    ],
+  },
+  {
+    name: 'Product Owner',
+    permissionNames: [
+      'goal_can_watch_content', 'goal_can_edit', 'goal_can_add_task_list',
+      'component_can_watch_content', 'component_can_add_tasks', 'component_can_edit',
+      'task_can_edit_description', 'task_can_edit_status', 'task_can_edit_deadline',
+      'task_can_watch_details', 'task_can_watch_subtasks', 'task_can_edit_tags',
+      'task_can_watch_tags', 'task_can_watch_priority', 'task_can_edit_priority',
+      'task_can_assign_users', 'task_can_watch_assigned_users', 'sprint_can_view',
+      'sprint_can_assign_tasks', 'sprint_can_view_analytics',
+    ],
+  },
+  {
+    name: 'Desarrollador',
+    permissionNames: [
+      'goal_can_watch_content', 'component_can_watch_content', 'task_can_edit_description',
+      'task_can_edit_status', 'task_can_edit_note', 'task_can_watch_details',
+      'task_can_watch_subtasks', 'task_can_add_subtasks', 'task_can_watch_tags',
+      'task_can_watch_priority', 'task_can_watch_assigned_users', 'sprint_can_view',
+      'timetracking_can_log',
+    ],
+  },
+]
 
 const contextMenu = ref<InstanceType<typeof TvContextMenu> | null>(null)
 const selectedRole = ref<CollaborationRole | null>(null)
@@ -118,6 +176,10 @@ const isDeleteDialogOpen = ref(false)
 function getPermissionsCount(roleId: number): number {
   const perms = props.rolesPermissions[roleId]
   return perms ? Object.keys(perms).length : 0
+}
+
+function createTemplate(template: typeof roleTemplates[number]) {
+  emit('createTemplate', template)
 }
 
 function getRolePermissions(roleId?: number): Record<number, true> {

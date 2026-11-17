@@ -25,6 +25,46 @@
             {{ t('sprints.review.hint') }}
           </p>
 
+          <div
+            v-if="reviewSummary"
+            class="rounded-lg border border-default p-3 space-y-2"
+            data-testid="sprint-functional-review"
+          >
+            <div class="font-medium">
+              Aceptación funcional
+            </div>
+            <div
+              v-for="item in reviewSummary.items"
+              :key="item.id"
+              class="flex flex-wrap items-center gap-2 text-sm"
+            >
+              <span class="flex-1 min-w-48">{{ item.description }}</span>
+              <UBadge
+                color="neutral"
+                variant="subtle"
+              >
+                QA: {{ item.qaStatus ?? 'pendiente' }}
+              </UBadge>
+              <USelect
+                v-model="acceptances[item.id]"
+                :items="acceptanceItems"
+                class="w-36"
+              />
+              <UButton
+                size="xs"
+                label="Registrar"
+                :loading="acceptanceSaving === item.id"
+                @click="saveAcceptance(item.id)"
+              />
+            </div>
+            <p
+              v-if="reviewSummary.openBugs.length"
+              class="text-xs text-error"
+            >
+              Bugs abiertos asociados: {{ reviewSummary.openBugs.length }}
+            </p>
+          </div>
+
           <UAlert
             icon="i-lucide-triangle-alert"
             color="warning"
@@ -165,12 +205,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { Sprint, SprintOutcome, SprintTaskOutcomeInput } from 'taskview-api'
+import type { Sprint, SprintOutcome, SprintReviewSummary, SprintTaskOutcomeInput } from 'taskview-api'
 import { useTaskView } from '@/composables/useTaskView'
 import { useSprintsStore } from '@/stores/sprints.store'
 import { useGoalsStore } from '@/stores/goals.store'
 import { useSprintFormat } from '../composables/useSprintFormat'
 import type { SprintTask } from '@/types/sprints.types'
+import { $tvApi } from '@/plugins/axios'
 
 const open = defineModel<boolean>('open', { default: false })
 
@@ -200,6 +241,14 @@ const outcomes = ref<Record<number, SprintOutcome>>({})
 // (sprintId becomes null); any positive value is the destination sprint id.
 const BACKLOG = 0
 const carryTargets = ref<Record<number, number>>({})
+const reviewSummary = ref<SprintReviewSummary | null>(null)
+const acceptances = ref<Record<number, 'accepted' | 'observed' | 'rejected'>>({})
+const acceptanceSaving = ref<number | null>(null)
+const acceptanceItems = [
+  { value: 'accepted', label: 'Aceptada' },
+  { value: 'observed', label: 'Observada' },
+  { value: 'rejected', label: 'Rechazada' },
+]
 
 // Accepted ⇔ task is done. For unfinished tasks the only meaningful choices are
 // carry over (continue in another sprint) or drop (won't do). Completed tasks are
@@ -235,8 +284,30 @@ watch(open, (value) => {
     carryTargets.value = Object.fromEntries(
       props.tasks.filter((task) => !task.complete).map((task) => [task.id, nearestTarget.value]),
     )
+    void loadReviewSummary()
   }
 })
+
+async function loadReviewSummary() {
+  try {
+    reviewSummary.value = await $tvApi.scrum.getSprintReviewSummary(props.sprint.id)
+    acceptances.value = Object.fromEntries(reviewSummary.value.items.map(item => [item.id, item.acceptanceStatus ?? 'observed']))
+  } catch {
+    reviewSummary.value = null
+  }
+}
+
+async function saveAcceptance(taskId: number) {
+  const status = acceptances.value[taskId]
+  if (!status || acceptanceSaving.value) return
+  acceptanceSaving.value = taskId
+  try {
+    await $tvApi.scrum.saveSprintReviewAcceptance(props.sprint.id, taskId, { status })
+    await loadReviewSummary()
+  } finally {
+    acceptanceSaving.value = null
+  }
+}
 
 async function performClose() {
   loading.value = true

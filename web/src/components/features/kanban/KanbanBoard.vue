@@ -1,13 +1,23 @@
 <template>
   <div
     v-if="canViewKanban"
-    ref="kanbanContainer"
-    class="flex gap-2 h-full"
-    @pointermove="handlePointerMove"
-    @pointerleave="boardStopScrolling"
-    @pointerdown="pointerDownHandler"
-    @touchend="boardStopScrolling"
+    class="flex h-full min-h-0 flex-col gap-2"
   >
+    <div class="flex shrink-0 justify-end px-2">
+      <UCheckbox
+        v-model="showSubtasks"
+        :label="t('kanban.showSubtasks')"
+        data-testid="kanban-show-subtasks"
+      />
+    </div>
+    <div
+      ref="kanbanContainer"
+      class="flex min-h-0 flex-1 gap-2"
+      @pointermove="handlePointerMove"
+      @pointerleave="boardStopScrolling"
+      @pointerdown="pointerDownHandler"
+      @touchend="boardStopScrolling"
+    >
     <TransitionGroup
       tag="div"
       class="contents"
@@ -23,6 +33,14 @@
           <span class="grow truncate">
             {{ t(status.name) }}
           </span>
+          <UBadge
+            :label="String(kanbanStore.tasksData[status.id]?.tasks.length ?? 0)"
+            color="neutral"
+            variant="subtle"
+            size="sm"
+            class="mr-1"
+            :data-testid="`kanban-column-count-${status.id}`"
+          />
           <KanbanTitleMenu
             v-if="status.id !== DEFAULT_ID"
             :status="status"
@@ -53,12 +71,63 @@
               :data-order="element.kanbanOrder"
               :data-task-id="element.id"
               data-testid="kanban-task-card"
+              class="relative"
+              :class="element.parentId != null ? 'ml-4 border-l-2 border-primary/40 pl-2' : ''"
             >
+              <div class="pointer-events-none absolute right-2 top-2 z-10 flex gap-1">
+                <UBadge
+                  v-if="element.issueKey"
+                  :label="element.issueKey"
+                  color="neutral"
+                  variant="subtle"
+                  size="xs"
+                  data-testid="kanban-issue-key"
+                />
+                <UBadge
+                  v-if="element.workItemType"
+                  :label="workItemLabel(element.workItemType)"
+                  :color="workItemColor(element.workItemType)"
+                  variant="soft"
+                  size="xs"
+                  data-testid="kanban-work-item-type"
+                />
+                <UBadge
+                  v-if="element.parentId != null"
+                  :label="`${t('kanban.subtask')} · #${element.parentId}`"
+                  color="primary"
+                  variant="soft"
+                  size="xs"
+                />
+              </div>
               <TaskItem
                 :task="element"
                 :ui="{ additionalInfo: 'flex-col items-stretch flex-nowrap' }"
                 @toggle="updateTaskChecked"
               />
+              <div class="pointer-events-none mt-1 flex flex-wrap gap-1 px-1">
+                <UBadge
+                  v-if="element.sprintId"
+                  :label="`Sprint ${element.sprintId}`"
+                  color="info"
+                  variant="subtle"
+                  size="xs"
+                />
+                <UBadge
+                  v-if="element.priorityId"
+                  :label="`P${element.priorityId}`"
+                  color="warning"
+                  variant="subtle"
+                  size="xs"
+                />
+                <UBadge
+                  v-if="element.qaStatus"
+                  :label="`QA: ${element.qaStatus}`"
+                  :color="qaColor(element.qaStatus)"
+                  variant="soft"
+                  size="xs"
+                  data-testid="kanban-qa-status"
+                />
+              </div>
             </div>
           </template>
 
@@ -79,6 +148,7 @@
     </TransitionGroup>
 
     <KanbanAddStatus :goal-id="kanbanStore.goalId" />
+    </div>
   </div>
 </template>
 
@@ -104,7 +174,18 @@ const route = useRoute()
 const { t } = useI18n()
 const { canViewKanban, canAddTask, canManageKanban } = useGoalPermissions()
 
+type KanbanCard = Task & {
+  issueKey?: string | null
+  workItemType?: 'task' | 'story' | 'bug'
+  qaStatus?: 'pending' | 'observed' | 'approved' | null
+}
+
+const workItemLabel = (type?: KanbanCard['workItemType']) => ({ story: 'Historia', bug: 'Bug', task: 'Tarea' }[type ?? 'task'])
+const workItemColor = (type?: KanbanCard['workItemType']) => ({ story: 'primary', bug: 'error', task: 'neutral' }[type ?? 'task'] as 'primary' | 'error' | 'neutral')
+const qaColor = (status: NonNullable<KanbanCard['qaStatus']>) => ({ pending: 'warning', observed: 'error', approved: 'success' }[status] as 'warning' | 'error' | 'success')
+
 const kanbanContainer = ref<HTMLElement>()
+const showSubtasks = ref(kanbanStore.filters.includeSubtasks ?? false)
 const goalId = computed(() => route.params.projectId as string)
 
 let boardScrollDirection: string | null = null
@@ -132,12 +213,16 @@ const initLoadTasksForEachColumn = async () => {
 }
 
 watch(goalId, (lGoalId) => {
+  if (!lGoalId || kanbanStore.goalId === +lGoalId) return
   kanbanStore.statuses = []
   kanbanStore.tasksData = {}
-  if (lGoalId) {
-    kanbanStore.goalId = +lGoalId
-  }
+  kanbanStore.goalId = +lGoalId
 }, { immediate: true })
+
+watch(showSubtasks, (enabled) => {
+  kanbanStore.setFilters({ ...kanbanStore.filters, includeSubtasks: enabled })
+  void kanbanStore.reloadColumns()
+})
 
 watch(
   () => kanbanStore.statuses,
@@ -308,8 +393,9 @@ async function onDragEnd(evt: {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   boardScrollSpeed = window.innerWidth < 1024 ? 7 : 5
+  if (kanbanStore.statuses.length > 0) await initLoadTasksForEachColumn()
 })
 
 onUnmounted(() => {

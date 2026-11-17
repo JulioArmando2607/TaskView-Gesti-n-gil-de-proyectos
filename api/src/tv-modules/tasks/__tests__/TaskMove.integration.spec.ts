@@ -126,7 +126,8 @@ async function seedTree(): Promise<SeededTree> {
         { fromTaskId: root, toTaskId: sub, goalId: goalA },
         { fromTaskId: root, toTaskId: outside, goalId: goalA },
     ]);
-    await db().insert(TimeEntriesSchema).values({ taskId: root, goalId: goalA, userId, startedAt: new Date(), endedAt: new Date(), durationSeconds: 60 });
+    const timeStartedAt = new Date();
+    await db().insert(TimeEntriesSchema).values({ taskId: root, goalId: goalA, userId, startedAt: timeStartedAt, endedAt: new Date(timeStartedAt.getTime() + 60_000), durationSeconds: 60 });
 
     return { root, sub, subSub, outside, listId: list.id };
 }
@@ -295,9 +296,11 @@ describe('Moving a task to another project', () => {
             .values({ login: `move-time-${Date.now()}`, email: `move-time-${Date.now()}@mail.dest`, password: 'not-used', block: 0 })
             .returning({ id: UsersSchema.id });
         try {
+            const timeStartedAt = new Date();
+            const timeEndedAt = new Date(timeStartedAt.getTime() + 30_000);
             await db().insert(TimeEntriesSchema).values([
-                { taskId: root, goalId: goalA, userId, startedAt: new Date(), endedAt: new Date(), durationSeconds: 30 },
-                { taskId: root, goalId: goalA, userId: someoneElse.id, startedAt: new Date(), endedAt: new Date(), durationSeconds: 30 },
+                { taskId: root, goalId: goalA, userId, startedAt: timeStartedAt, endedAt: timeEndedAt, durationSeconds: 30 },
+                { taskId: root, goalId: goalA, userId: someoneElse.id, startedAt: timeStartedAt, endedAt: timeEndedAt, durationSeconds: 30 },
             ]);
 
             expect((await move({ taskId: root, targetGoalId: goalB, auth })).status).toBe(200);

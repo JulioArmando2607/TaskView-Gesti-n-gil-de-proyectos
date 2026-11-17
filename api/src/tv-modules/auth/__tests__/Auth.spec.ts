@@ -319,14 +319,10 @@ describe('Login API', () => {
 
         await delay(3000);
 
-        try {
-            const responseExp = await axios.post(`${url}/module/auth/refresh/token`, {
-                refreshToken: responseLogin.data.refresh,
-            });
-            expect(responseExp).toBeFalsy();
-        } catch (err: any) {
-            expect(err.status).toBe(400);
-        }
+        const responseExp = await axios.post(`${url}/module/auth/refresh/token`, {
+            refreshToken: responseLogin.data.refresh,
+        }, { validateStatus: () => true });
+        expect(responseExp.status).toBe(400);
     });
 
     it('Send delete code to email', async () => {
