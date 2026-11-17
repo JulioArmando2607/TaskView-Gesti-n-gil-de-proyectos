@@ -31,7 +31,7 @@
       >
         <div class="bg-elevated rounded-lg p-2 px-3 flex items-center text-base h-10 rounded-b-none">
           <span class="grow truncate">
-            {{ t(status.name) }}
+            {{ columnLabel(status.name) }}
           </span>
           <UBadge
             :label="String(kanbanStore.tasksData[status.id]?.tasks.length ?? 0)"
@@ -93,7 +93,7 @@
                 />
                 <UBadge
                   v-if="element.parentId != null"
-                  :label="`${t('kanban.subtask')} · #${element.parentId}`"
+                  :label="t('kanban.subtask')"
                   color="primary"
                   variant="soft"
                   size="xs"
@@ -105,6 +105,26 @@
                 @toggle="updateTaskChecked"
               />
               <div class="pointer-events-none mt-1 flex flex-wrap gap-1 px-1">
+                <UBadge
+                  v-if="element.parentId != null"
+                  :label="`${element.parentIssueKey ?? `#${element.parentId}`} · ${element.parentDescription ?? ''}`"
+                  :title="`Pertenece a ${element.parentIssueKey ?? `#${element.parentId}`} · ${element.parentDescription ?? ''}`"
+                  color="primary"
+                  variant="subtle"
+                  size="xs"
+                  class="max-w-full truncate"
+                  data-testid="kanban-parent-reference"
+                />
+                <UBadge
+                  v-if="element.epicIssueKey"
+                  :label="`${element.epicIssueKey} · ${element.epicTitle ?? ''}`"
+                  :title="`Épica: ${element.epicIssueKey} · ${element.epicTitle ?? ''}`"
+                  color="success"
+                  variant="subtle"
+                  size="xs"
+                  class="max-w-full truncate"
+                  data-testid="kanban-epic-reference"
+                />
                 <UBadge
                   v-if="element.sprintId"
                   :label="`Sprint ${element.sprintId}`"
@@ -166,26 +186,45 @@ import { useKanbanStore } from '@/stores/kanban.store'
 import { useTasksStore } from '@/stores/tasks.store'
 import { useGoalPermissions } from '@/composables/useGoalPermissions'
 import { DEFAULT_ID } from '@/types/app.types'
+import { useDefinitionOfDoneMessage } from '@/composables/useDefinitionOfDoneMessage'
 
 const kanbanStore = useKanbanStore()
 const tasksStore = useTasksStore()
 const route = useRoute()
 
 const { t } = useI18n()
+const toast = useToast()
+const definitionOfDoneMessage = useDefinitionOfDoneMessage()
 const { canViewKanban, canAddTask, canManageKanban } = useGoalPermissions()
 
 type KanbanCard = Task & {
   issueKey?: string | null
   workItemType?: 'task' | 'story' | 'bug'
   qaStatus?: 'pending' | 'observed' | 'approved' | null
+  parentIssueKey?: string | null
+  parentDescription?: string | null
+  epicIssueKey?: string | null
+  epicTitle?: string | null
 }
 
 const workItemLabel = (type?: KanbanCard['workItemType']) => ({ story: 'Historia', bug: 'Bug', task: 'Tarea' }[type ?? 'task'])
 const workItemColor = (type?: KanbanCard['workItemType']) => ({ story: 'primary', bug: 'error', task: 'neutral' }[type ?? 'task'] as 'primary' | 'error' | 'neutral')
 const qaColor = (status: NonNullable<KanbanCard['qaStatus']>) => ({ pending: 'warning', observed: 'error', approved: 'success' }[status] as 'warning' | 'error' | 'success')
+const columnLabel = (name: string) => {
+  const normalizedName = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+  const defaultLabels: Record<string, string> = {
+    backlog: 'Pendiente',
+    todo: 'Por hacer',
+    'in progress': 'En progreso',
+    testing: 'Pruebas',
+    done: 'Hecho',
+  }
+  return defaultLabels[normalizedName] ?? t(name)
+}
 
 const kanbanContainer = ref<HTMLElement>()
-const showSubtasks = ref(kanbanStore.filters.includeSubtasks ?? false)
+// Start the board with subtasks visible even if an older persisted filter stored `false`.
+const showSubtasks = ref(true)
 const goalId = computed(() => route.params.projectId as string)
 
 let boardScrollDirection: string | null = null
@@ -222,7 +261,7 @@ watch(goalId, (lGoalId) => {
 watch(showSubtasks, (enabled) => {
   kanbanStore.setFilters({ ...kanbanStore.filters, includeSubtasks: enabled })
   void kanbanStore.reloadColumns()
-})
+}, { immediate: true })
 
 watch(
   () => kanbanStore.statuses,
@@ -235,10 +274,15 @@ watch(
 
 const updateTaskChecked = async (task: Task) => {
   const newStatus = !task.complete
-  await tasksStore.updateTaskCompleteStatus({
+  const result = await tasksStore.updateTaskCompleteStatus({
     id: task.id,
     complete: newStatus,
   })
+  if (result?.definitionOfDoneBlocked) {
+    toast.add({ title: t('tasks.doneBlockedTitle'), description: definitionOfDoneMessage(result.definitionOfDoneDetails), color: 'error' })
+    return
+  }
+  if (!result) return
 
   for (const [, value] of Object.entries(kanbanStore.tasksData)) {
     if (!value) continue
@@ -251,11 +295,19 @@ const updateTaskChecked = async (task: Task) => {
   }
 }
 
+const isDoneColumn = (statusId: number | null | undefined) => {
+  if (statusId == null || statusId === DEFAULT_ID) return false
+  const statusName = kanbanStore.statuses.find(status => status.id === statusId)?.name
+  if (!statusName) return false
+  const normalizedName = statusName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
+  return /^(done|hecho|complete|completed|finished|finalizado|finalizada|completado|completada|terminado|terminada)$/.test(normalizedName)
+}
+
 const loadMoreTasks = (columnId: number) => {
   kanbanStore.fetchTasksForColumn(
     kanbanStore.goalId,
     columnId === DEFAULT_ID ? null : columnId,
-    kanbanStore.tasksData[columnId]?.tasks[kanbanStore.tasksData[columnId]?.tasks.length - 1]?.kanbanOrder || null,
+    kanbanStore.tasksData[columnId]?.nextCursor ?? null,
   )
 }
 
@@ -373,6 +425,12 @@ async function onDragEnd(evt: {
   taskId = +taskId
   const newColumnIdNum = +newColumnId
 
+  const movedTask = Object.values(kanbanStore.tasksData)
+    .flatMap(column => column?.tasks ?? [])
+    .find(task => task.id === taskId)
+  const wasInDoneColumn = isDoneColumn(movedTask?.statusId)
+  const isInDoneColumn = isDoneColumn(newColumnIdNum)
+
   const columnTasks = kanbanStore.tasksData[newColumnIdNum]?.tasks ?? []
 
   const activeTasks = columnTasks.filter((task: Task) => task.id !== taskId)
@@ -380,13 +438,40 @@ async function onDragEnd(evt: {
   const nextItemInColumn = activeTasks[evt.newDraggableIndex] || null
   const prevItemInColumn = activeTasks[evt.newDraggableIndex - 1] || null
 
+  const targetColumnId = newColumnIdNum === DEFAULT_ID ? null : newColumnIdNum
+
+  // Moving into or out of Done must update status and completion together.
+  // This lets the server reject a DoD violation before the card is moved.
+  if (movedTask && wasInDoneColumn !== isInDoneColumn && movedTask.complete !== isInDoneColumn) {
+    const completion = await tasksStore.updateTaskCompleteStatus(
+      { id: movedTask.id, statusId: targetColumnId, complete: isInDoneColumn },
+      false,
+    )
+    if (!completion || (isInDoneColumn && !completion.complete)) {
+      toast.add({
+        title: completion?.definitionOfDoneBlocked ? t('tasks.doneBlockedTitle') : t('tasks.statusUpdateFailed'),
+        description: completion?.definitionOfDoneBlocked
+          ? definitionOfDoneMessage(completion.definitionOfDoneDetails)
+          : completion?.statusUpdateFailure ?? t('tasks.statusUpdateFailedDescription'),
+        color: 'error',
+      })
+      await kanbanStore.reloadColumns()
+      if (targetColumn) scrollToColumn(targetColumn)
+      return
+    }
+  }
+
   await kanbanStore.updateTasksOrderAndColumn({
     taskId,
     prevTaskId: prevItemInColumn?.id ?? null,
     nextTaskId: nextItemInColumn?.id ?? null,
-    columnId: newColumnIdNum === DEFAULT_ID ? null : newColumnIdNum,
+    columnId: targetColumnId,
     goalId: kanbanStore.goalId,
   })
+
+  // Re-fetch every column with the current epic/type filters so counts, order,
+  // parent progress and cards that no longer match remain current immediately.
+  await kanbanStore.reloadColumns()
 
   if (targetColumn) {
     scrollToColumn(targetColumn)

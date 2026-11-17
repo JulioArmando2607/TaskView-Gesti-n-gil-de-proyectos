@@ -945,5 +945,12 @@
       "releaseDate": "20261116",
       "scripts": ["/1.79.0/0.epics-support-technical-tasks.sql"],
       "description": ["Allows stories and technical tasks to belong to an epic; bugs remain linked to their affected story or task."]
+    },
+    "75": {
+      "version": "1.80.0",
+      "name": "Scrum testing workflow stage",
+      "releaseDate": "20261117",
+      "scripts": ["/1.80.0/0.scrum-testing-status.sql"],
+      "description": ["Adds a project-scoped Testing column before Done for existing and new project workflows."]
     }
 }

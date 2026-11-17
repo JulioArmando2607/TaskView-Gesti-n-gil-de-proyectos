@@ -15,6 +15,15 @@
     data-testid="kanban-type-filter"
   />
   <USelect
+    v-model="epicId"
+    :items="epicOptions"
+    value-key="value"
+    class="min-w-48 max-w-64"
+    placeholder="Épica"
+    aria-label="Filtrar por épica"
+    data-testid="kanban-epic-filter"
+  />
+  <USelect
     v-model="priorityId"
     :items="priorityOptions"
     value-key="value"
@@ -37,13 +46,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import TvListFilter from './TvListFilter.vue'
 import TvUserFilter from './TvUserFilter.vue'
 import TvKanbanSprintFilter from './TvKanbanSprintFilter.vue'
+import { $tvApi } from '@/plugins/axios'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   goalId: number
   showResetLabel?: boolean
 }>(), {
@@ -55,6 +65,21 @@ const assigneeIds = defineModel<number[]>('assigneeIds', { default: () => [] })
 const sprintId = defineModel<number | null>('sprintId', { default: null })
 const workItemType = defineModel<string>('workItemType', { default: '' })
 const priorityId = defineModel<string>('priorityId', { default: '' })
+const epicId = defineModel<string>('epicId', { default: '' })
+const epics = ref<Awaited<ReturnType<typeof $tvApi.scrum.listEpics>>>([])
+const epicOptions = computed(() => [
+  { label: 'Todas las épicas', value: '' },
+  { label: 'Sin épica', value: 'none' },
+  ...epics.value.map(epic => ({ label: `${epic.issueKey} · ${epic.title}${epic.archived ? ' (Archivada)' : ''}`, value: String(epic.id) })),
+])
+
+watch(() => props.goalId, async (goalId) => {
+  try {
+    epics.value = await $tvApi.scrum.listEpics(goalId)
+  } catch {
+    epics.value = []
+  }
+}, { immediate: true })
 
 const workItemTypeOptions = [
   { label: 'Todos los tipos', value: '' },
@@ -72,7 +97,7 @@ const priorityOptions = [
 const { t } = useI18n()
 
 const hasActiveFilters = computed(
-  () => listIds.value.length > 0 || assigneeIds.value.length > 0 || sprintId.value !== null || !!workItemType.value || !!priorityId.value,
+  () => listIds.value.length > 0 || assigneeIds.value.length > 0 || sprintId.value !== null || !!workItemType.value || !!priorityId.value || !!epicId.value,
 )
 
 const resetFilters = () => {
@@ -81,6 +106,7 @@ const resetFilters = () => {
   sprintId.value = null
   workItemType.value = ''
   priorityId.value = ''
+  epicId.value = ''
 }
 
 defineExpose({ hasActiveFilters })

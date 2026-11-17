@@ -13,11 +13,16 @@ export const useKanbanStore = defineStore('kanban', {
       statuses: [],
       goalId: DEFAULT_ID,
       filters: {},
+      queryVersion: 0,
     }
   },
   actions: {
     async fetchTasksForColumn(goalId: GoalItem['id'], columnId: KanbanColumnItem['id'] | null, cursor: string | number | null) {
+      const queryVersion = this.queryVersion
       const result = await $tvApi.kanban.fetchTasksForColumn(goalId, columnId, cursor, this.filters).catch(console.error)
+
+      // Ignore responses from a previous epic/filter selection or board reload.
+      if (queryVersion !== this.queryVersion) return
 
       if (!result) {
         if (!this.tasksData[columnId ?? DEFAULT_ID]) {
@@ -43,6 +48,32 @@ export const useKanbanStore = defineStore('kanban', {
       // } else {
       // A task can already be on the board when a real-time insert lands while the page is in flight
       this.tasksData[columnId ?? DEFAULT_ID]!.tasks.push(...result.tasks.filter((task) => !this.hasTask(task.id)))
+      if (columnId === null) {
+        const tasks = this.tasksData[columnId ?? DEFAULT_ID]!.tasks
+        const byId = new Map(tasks.map(task => [task.id, task]))
+        const children = new Map<number, typeof tasks>()
+        const compareOrder = (a: typeof tasks[number], b: typeof tasks[number]) =>
+          (a.taskOrder ?? Number.MAX_SAFE_INTEGER) - (b.taskOrder ?? Number.MAX_SAFE_INTEGER) || a.id - b.id
+        for (const task of tasks) {
+          if (task.parentId == null || !byId.has(task.parentId)) continue
+          const siblings = children.get(task.parentId) ?? []
+          siblings.push(task)
+          children.set(task.parentId, siblings)
+        }
+        for (const siblings of children.values()) siblings.sort(compareOrder)
+        const roots = tasks.filter(task => task.parentId == null || !byId.has(task.parentId)).sort(compareOrder)
+        const ordered: typeof tasks = []
+        const visited = new Set<number>()
+        const appendTree = (task: typeof tasks[number]) => {
+          if (visited.has(task.id)) return
+          visited.add(task.id)
+          ordered.push(task)
+          for (const child of children.get(task.id) ?? []) appendTree(child)
+        }
+        for (const root of roots) appendTree(root)
+        for (const task of tasks) appendTree(task)
+        this.tasksData[columnId ?? DEFAULT_ID]!.tasks = ordered
+      }
       // }
       this.tasksData[columnId ?? DEFAULT_ID]!.nextCursor = result.nextCursor
       this.tasksData[columnId ?? DEFAULT_ID]!.columnVersion = result.columnVersion
@@ -83,6 +114,39 @@ export const useKanbanStore = defineStore('kanban', {
       }
 
       this.tasksData[data.columnId ?? DEFAULT_ID]!.columnVersion = result.columnVersion
+    },
+
+    async moveTaskToColumn(data: { taskId: number; goalId: number; columnId: number | null }): Promise<{ ok: boolean; error?: string }> {
+      let result
+      try {
+        result = await $tvApi.kanban.updateTasksOrderAndColumn({
+          taskId: data.taskId,
+          goalId: data.goalId,
+          columnId: data.columnId,
+          prevTaskId: null,
+          nextTaskId: null,
+        })
+      } catch (error) {
+        const response = (error as { response?: { status?: number; statusText?: string; data?: unknown } })?.response
+        const responseData = response?.data as { error?: string; message?: string } | string | undefined
+        const message = typeof responseData === 'string'
+          ? responseData
+          : responseData?.message ?? responseData?.error
+        return {
+          ok: false,
+          error: response
+            ? `HTTP ${response.status ?? '—'}: ${message ?? response.statusText ?? 'Error del servidor'}`
+            : error instanceof Error ? error.message : 'Error desconocido',
+        }
+      }
+
+      if (!result) return { ok: false, error: 'El servidor no encontró la tarea o la columna del tablero.' }
+
+      if (this.goalId === data.goalId && this.statuses.length > 0) {
+        await this.reloadColumns()
+      }
+
+      return { ok: true }
     },
 
     async addTask(taskArg: TaskArgAdd) {
@@ -214,9 +278,11 @@ export const useKanbanStore = defineStore('kanban', {
 
     setFilters(filters: KanbanFilters) {
       this.filters = filters
+      this.queryVersion++
     },
 
     async reloadColumns() {
+      this.queryVersion++
       this.tasksData = {}
       await Promise.all(this.statuses.map((status) =>
         this.fetchTasksForColumn(this.goalId, status.id === DEFAULT_ID ? null : status.id, null),

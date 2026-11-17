@@ -379,7 +379,8 @@ export class TasksController {
             }
             if (result.reason === 'hierarchy_conflict') return res.status(409).json({ error: 'invalid_parent' });
             if (result.reason === 'definition_of_done') return res.status(409).json({ error: result.reason, details: result.details ?? [] });
-            return res.tvJson(null);
+            if (result.reason === 'not_found') return res.status(404).json({ error: 'task_not_found', message: 'No se encontró la tarea para guardar el cambio.' });
+            return res.status(400).json({ error: result.reason, message: 'No se pudo guardar el cambio de la tarea.' });
         }
 
         return res.tvJson({ ...result.task, syncFailed: result.syncFailed });

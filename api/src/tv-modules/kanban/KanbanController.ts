@@ -73,6 +73,9 @@ export class KanbanController {
         if (filters instanceof ArkErrors) {
             return res.status(400).send(filters.summary);
         }
+        if (filters.epicId !== undefined && filters.epicId !== null && (!Number.isSafeInteger(filters.epicId) || filters.epicId <= 0)) {
+            return res.status(400).send('invalid epic filter');
+        }
 
         return res.tvJson(await req.appUser.kanbanManager.fetchTasksForColumn({ ...data, filters }));
     };

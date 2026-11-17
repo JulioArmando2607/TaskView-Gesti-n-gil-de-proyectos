@@ -208,22 +208,33 @@ export class KanbanManager {
                 }
             }
         } else {
-            newOrder = await this.user.tasksManager.repository.getNextKanbanOrder(data.goalId);
+            // Append to the destination column. Using the project-wide minimum
+            // can leave the moved card with an order that belongs to another
+            // column and makes the client appear to revert it after refresh.
+            newOrder = await this.user.tasksManager.repository.getNextKanbanOrder(data.goalId, data.columnId);
         }
 
-        if (newOrder !== null) {
-            const task = await this.user.tasksManager.repository.updateTask({
-                id: data.taskId,
-                kanbanOrder: newOrder,
-                statusId: data.columnId,
+        if (newOrder === null) return null;
+
+        const task = await this.user.tasksManager.repository.updateTask({
+            id: data.taskId,
+            kanbanOrder: newOrder,
+            statusId: data.columnId,
+        });
+        // Do not report a successful move if the database rejected the update.
+        // The client can then keep its current state and show an error.
+        if (!task) return null;
+
+        if (previous.statusId !== task.statusId) {
+            eventBus.emit('task.updated', {
+                task,
+                changes: { statusId: task.statusId, kanbanOrder: newOrder },
+                initiatorId: this.user.getUserData()?.id as number,
             });
-            if (task && previous.statusId !== task.statusId) {
-                eventBus.emit('task.updated', {
-                    task,
-                    changes: { statusId: task.statusId, kanbanOrder: newOrder },
-                    initiatorId: this.user.getUserData()?.id as number,
-                });
-            }
+            await Promise.all([
+                this.repository.updateColumnVersion(data.goalId, previous.statusId),
+                this.repository.updateColumnVersion(data.goalId, data.columnId),
+            ]);
         }
 
         const result = await this.repository.getTasksOrderForColumnAndCursor(

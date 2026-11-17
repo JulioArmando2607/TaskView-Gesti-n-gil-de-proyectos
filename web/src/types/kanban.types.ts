@@ -8,6 +8,7 @@ export type KanbanStoreState = {
     statuses: KanbanColumnItem[];
     goalId: GoalItem['id'];
     filters: KanbanFilters;
+    queryVersion: number;
 };
 export type KanbanMoveStatusArgs = {
     statusId: KanbanColumnItem['id'];

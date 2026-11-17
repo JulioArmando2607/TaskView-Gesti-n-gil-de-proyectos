@@ -47,6 +47,14 @@
         />
       </div>
 
+      <TaskAcceptanceQa
+        :key="task.id"
+        :task-id="task.id"
+        :goal-id="task.goalId"
+        :work-item-type="task.workItemType"
+        :acceptance-criteria="task.acceptanceCriteria"
+      />
+
       <div class="grid grid-cols-1 @lg:grid-cols-2 gap-4">
         <template
           v-for="fieldId in orderedFieldIds"
@@ -177,6 +185,7 @@ import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { useDebounceFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useTasksStore } from '@/stores/tasks.store'
+import { useKanbanStore } from '@/stores/kanban.store'
 import NoteEditor from '@/components/features/tasks/parts/NoteEditor.vue'
 import TvPriority from '@/components/features/base/TvPriority.vue'
 import TaskTagsManager from '@/components/features/tasks/parts/tags/TaskTagsManager.vue'
@@ -196,6 +205,7 @@ import TaskIdCopy from '@/components/features/tasks/parts/TaskIdCopy.vue'
 import TaskProjectLabel from '@/components/features/tasks/parts/TaskProjectLabel.vue'
 import TvSprintSelect from '@/components/features/base/TvSprintSelect.vue'
 import TaskEstimateInput from '@/components/features/tasks/parts/TaskEstimateInput.vue'
+import TaskAcceptanceQa from '@/components/features/tasks/parts/TaskAcceptanceQa.vue'
 import type { PriorityValue } from '@/composables/usePriorityOptions'
 import type { ListValue } from '@/composables/useGoalListOptions'
 import type { StatusValue } from '@/composables/useKanbanStatusOptions'
@@ -205,10 +215,15 @@ import { tasksSection } from '@/uiCustomization/sections/tasks'
 import { useTaskShortcuts } from '@/shortcuts/useTaskShortcuts'
 import { useShortcutsEnabled } from '@/shortcuts/useShortcutsEnabled'
 import { SHORTCUTS } from '@/shortcuts/registry'
+import { useProjectContext } from '@/composables/useProjectContext'
+import { useDefinitionOfDoneMessage } from '@/composables/useDefinitionOfDoneMessage'
 
 const { t } = useI18n()
+const definitionOfDoneMessage = useDefinitionOfDoneMessage()
 const toast = useToast()
 const tasksStore = useTasksStore()
+const kanbanStore = useKanbanStore()
+const projectContext = useProjectContext()
 const {
   canEditTaskStatus,
   canViewTaskPriority,
@@ -277,6 +292,14 @@ async function toggleComplete() {
     id: task.value.id,
     complete: !task.value.complete,
   })
+  if (result?.definitionOfDoneBlocked) {
+    toast.add({
+      title: t('tasks.doneBlockedTitle'),
+      description: definitionOfDoneMessage(result.definitionOfDoneDetails),
+      color: 'error',
+    })
+    return
+  }
   if (result?.syncFailed) {
     toast.add({
       title: t('integrations.syncFailed'),
@@ -318,10 +341,61 @@ async function updateList(goalListId: ListValue | undefined) {
 
 async function updateStatus(statusId: StatusValue | undefined) {
   if (!task.value || statusId === undefined || statusId === task.value.statusId) return
-  await tasksStore.updateTaskStatusId({
-    id: task.value.id,
-    statusId,
+  const currentStatusId = task.value.statusId
+  const taskId = task.value.id
+  const goalId = task.value.goalId
+
+  const isDoneStatus = (id: number | null | undefined) => {
+    // The project context can exist before its statuses finish loading. Search
+    // both sources so an empty context list does not hide the Kanban columns.
+    const statusList = [...kanbanStore.statuses, ...(projectContext?.statuses.value ?? [])]
+    const name = statusList.find(status => status.id === id)?.name
+    return /^(done|hecho|complete|completed|finished|finalizado|finalizada|completado|completada|terminado|terminada)$/.test(
+      name?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase() ?? '',
+    )
+  }
+  const wasDone = isDoneStatus(currentStatusId)
+  const isDone = isDoneStatus(statusId)
+
+  // Change the column and completion flag in one API request. A two step
+  // move could leave the task in the wrong column if the DoD gate rejects it.
+  if (wasDone !== isDone) {
+    const completion = await tasksStore.updateTaskCompleteStatus({ id: taskId, statusId, complete: isDone }, false)
+    if (!completion || (isDone && !completion.complete)) {
+      toast.add({
+        title: completion?.definitionOfDoneBlocked ? t('tasks.doneBlockedTitle') : t('tasks.statusUpdateFailed'),
+        description: completion?.definitionOfDoneBlocked
+          ? definitionOfDoneMessage(completion.definitionOfDoneDetails)
+          : completion?.statusUpdateFailure ?? t('tasks.statusUpdateFailedDescription'),
+        color: 'error',
+      })
+      return
+    }
+    await kanbanStore.reloadColumns()
+    return
+  }
+
+  const moved = await kanbanStore.moveTaskToColumn({
+    taskId,
+    goalId,
+    columnId: statusId,
   })
+  if (!moved.ok) {
+    toast.add({
+      title: t('tasks.statusUpdateFailed'),
+      description: moved.error ?? t('tasks.statusUpdateFailedDescription'),
+      color: 'error',
+    })
+    return
+  }
+
+  for (const localTask of tasksStore.tasks) {
+    if (localTask.id === taskId) localTask.statusId = statusId
+  }
+  if (tasksStore.selectedTask?.id === taskId) {
+    tasksStore.selectedTask.statusId = statusId
+  }
+
 }
 
 
